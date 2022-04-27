@@ -69,7 +69,7 @@ func processVkMessage(vk *api.VK, obj events.MessageNewObject) {
 	log.Printf("%d: %s", obj.Message.PeerID, obj.Message.Text)
 	images := getImages(obj.Message)
 	log.Printf("image links: %v", images)
-	user := getUserByVKId()
+	user := User{}
 	sendInTelegram(user, images)
 }
 
