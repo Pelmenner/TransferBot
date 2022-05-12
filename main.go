@@ -19,7 +19,7 @@ func main() {
 	subscriptionCallback := func(subscriber *Chat, subscriptionToken string) {
 		log.Print("subscription:", subscriber, subscriptionToken)
 		if subscription, exists := tokens[subscriptionToken]; exists {
-			subscriptions[subscriber] = append(subscriptions[subscriber], subscription)
+			subscriptions[subscription] = append(subscriptions[subscription], subscriber)
 			messengers[subscriber.Type].SendMessage(Message{"successfully subcsribed!"}, subscriber)
 		}
 	}
