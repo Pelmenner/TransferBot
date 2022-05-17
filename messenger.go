@@ -15,18 +15,6 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
-// TODO: remove later
-type Message struct {
-	Text string
-}
-
-// TODO: remove later
-type Chat struct {
-	ID    int
-	Token string
-	Type  string
-}
-
 type CallbackOnMessageReceived func(message Message, chat *Chat)
 type CallbackOnSubscribe func(subsriber *Chat, subscriptionToken string)
 type CallbackOnChatCreated func(chat *Chat)
@@ -138,7 +126,7 @@ func (m TGMessenger) SendMessage(message Message, chat *Chat) bool {
 }
 
 func (m TGMessenger) ProcessMessage(message *tgbotapi.Message, chat *Chat) {
-	m.messageCallback(Message{message.Text}, chat)
+	m.messageCallback(Message{Text: message.Text}, chat)
 }
 
 func getChatByVKID(id int64) *Chat {
