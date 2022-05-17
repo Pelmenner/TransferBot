@@ -119,10 +119,7 @@ func (m TGMessenger) SendMessage(message Message, chat *Chat) bool {
 	msg := tgbotapi.NewMessage(int64(chat.ID), message.Text)
 
 	_, err := m.tg.Send(msg)
-	if err != nil {
-		return false
-	}
-	return true
+	return err == nil
 }
 
 func (m TGMessenger) ProcessMessage(message *tgbotapi.Message, chat *Chat) {
