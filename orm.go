@@ -1,5 +1,9 @@
 package main
 
+import (
+	_ "github.com/mattn/go-sqlite3"
+)
+
 // TODO: ?
 type Attachment struct {
 	Type string
