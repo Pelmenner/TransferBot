@@ -1,7 +1,8 @@
 CREATE TABLE IF NOT EXISTS Chats (
     chat_id INTEGER NOT NULL,
     chat_type TEXT NOT NULL,
-    token TEXT NOT NULL
+    token TEXT NOT NULL,
+    CONSTRAINT unique_chat UNIQUE (chat_id, chat_type)
 );
 
 CREATE TABLE IF NOT EXISTS Subscriptions (
