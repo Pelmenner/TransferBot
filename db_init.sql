@@ -1,7 +1,7 @@
 CREATE TABLE IF NOT EXISTS Chats (
     chat_id INTEGER NOT NULL,
     chat_type TEXT NOT NULL,
-    token INTEGER NOT NULL
+    token TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS Subscriptions (

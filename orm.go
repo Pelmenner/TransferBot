@@ -20,4 +20,5 @@ type Chat struct {
 	ID    int
 	Token string
 	Type  string
+	rowid int
 }

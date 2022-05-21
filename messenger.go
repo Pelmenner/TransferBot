@@ -141,7 +141,7 @@ func (m TGMessenger) ProcessCommand(message *tgbotapi.Message, chat *Chat) {
 }
 
 func (m VKMessenger) ProcessMessage(obj events.MessageNewObject) {
-	m.messageCallback(Message{Text: findOriginal(obj.Message).Text}, &Chat{obj.Message.PeerID, "vk_token", "vk"})
+	m.messageCallback(Message{Text: findOriginal(obj.Message).Text}, &Chat{obj.Message.PeerID, "vk_token", "vk", 0})
 }
 
 func (m VKMessenger) Run() {
