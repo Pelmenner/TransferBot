@@ -20,7 +20,7 @@ func main() {
 		log.Print("subscription:", subscriber, subscriptionToken)
 		if subscription, exists := tokens[subscriptionToken]; exists {
 			subscriptions[subscription] = append(subscriptions[subscription], subscriber)
-			messengers[subscriber.Type].SendMessage(Message{"successfully subcsribed!"}, subscriber)
+			messengers[subscriber.Type].SendMessage(Message{"successfully subcsribed!", "bot", []*Attachment{}}, subscriber)
 		}
 	}
 
