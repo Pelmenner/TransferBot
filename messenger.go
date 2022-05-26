@@ -173,6 +173,19 @@ func (m *TGMessenger) SendMessage(message Message, chat *Chat) bool {
 	}
 }
 
+func (m *TGMessenger) ProcessMediaGroup(message *tgbotapi.Message, chat *Chat) {
+	time.Sleep(2 * time.Second)
+	m.MediaGroupMutex.Lock()
+	defer m.MediaGroupMutex.Unlock()
+
+	standardMessage := Message{message.Text + message.Caption, "usr", []*Attachment{}}
+	for _, attachment := range m.MediaGroups[message.MediaGroupID] {
+		standardMessage.Attachments = append(standardMessage.Attachments, attachment)
+	}
+	m.messageCallback(standardMessage, chat)
+	m.MediaGroups[message.MediaGroupID] = nil
+}
+
 func (m *TGMessenger) ProcessMessage(message *tgbotapi.Message, chat *Chat) {
 	if message.ReplyToMessage != nil {
 		m.ProcessMessage(message.ReplyToMessage, chat)
@@ -180,27 +193,47 @@ func (m *TGMessenger) ProcessMessage(message *tgbotapi.Message, chat *Chat) {
 	}
 
 	if message.MediaGroupID == "" {
-		m.messageCallback(Message{message.Text, "usr", []*Attachment{}}, chat)
+		standardMessage := Message{
+			Text:   message.Text,
+			Sender: "usr",
+		}
+		if message.Photo != nil {
+			url, err := m.tg.GetFileDirectURL(message.Photo[len(message.Photo)-1].FileID)
+			if err == nil {
+				standardMessage.Attachments = append(standardMessage.Attachments,
+					&Attachment{
+						Type: "photo",
+						URL:  url,
+					})
+			}
+		}
+		if message.Video != nil {
+			url, err := m.tg.GetFileDirectURL(message.Video.FileID)
+			if err == nil {
+				standardMessage.Attachments = append(standardMessage.Attachments,
+					&Attachment{
+						Type: "video",
+						URL:  url,
+					})
+			}
+
+		}
+		m.messageCallback(standardMessage, chat)
 	} else {
 		_, exists := m.MediaGroups[message.MediaGroupID]
 		if !exists {
 			// media group is splitted into different messages, we need to catch them all before processing it
-			go func() {
-				time.Sleep(2 * time.Second)
-				m.MediaGroupMutex.Lock()
-				defer m.MediaGroupMutex.Unlock()
-
-				standardMessage := Message{message.Text + message.Caption, "usr", []*Attachment{}}
-				for _, attachment := range m.MediaGroups[message.MediaGroupID] {
-					standardMessage.Attachments = append(standardMessage.Attachments, attachment)
-				}
-				m.messageCallback(standardMessage, chat)
-				m.MediaGroups[message.MediaGroupID] = nil
-			}()
+			go m.ProcessMediaGroup(message, chat)
 		}
+
+		url, err := m.tg.GetFileDirectURL(message.Photo[len(message.Photo)-1].FileID)
+		if err != nil {
+			return
+		}
+
 		m.MediaGroupMutex.Lock()
 		m.MediaGroups[message.MediaGroupID] = append(m.MediaGroups[message.MediaGroupID],
-			&Attachment{"photo", message.Photo[len(message.Photo)-1].FileID})
+			&Attachment{"photo", url})
 		m.MediaGroupMutex.Unlock()
 	}
 }
