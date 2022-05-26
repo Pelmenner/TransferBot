@@ -16,24 +16,6 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
-type Attachment struct {
-	Type string
-	URL  string
-}
-
-type Message struct {
-	Text        string
-	Sender      string
-	Attachments []*Attachment
-}
-
-type Chat struct {
-	ID    int
-	Token string
-	Type  string
-	RowID int
-}
-
 type CallbackOnMessageReceived func(message Message, chat *Chat)
 type CallbackOnSubscribe func(subsriber *Chat, subscriptionToken string)
 type CallbackOnChatCreated func(chat *Chat)
