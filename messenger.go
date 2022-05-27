@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -44,7 +47,7 @@ type TGMessenger struct {
 	MediaGroupMutex sync.Mutex
 }
 
-func newTGMessenger(baseMessenger BaseMessenger) *TGMessenger {
+func NewTGMessenger(baseMessenger BaseMessenger) *TGMessenger {
 	token := goDotEnvVariable("TG_TOKEN")
 	bot, err := tgbotapi.NewBotAPI(token)
 	if err != nil {
@@ -57,7 +60,7 @@ func newTGMessenger(baseMessenger BaseMessenger) *TGMessenger {
 	}
 }
 
-func newVKMessenger(baseMessenger BaseMessenger) *VKMessenger {
+func NewVKMessenger(baseMessenger BaseMessenger) *VKMessenger {
 	token := goDotEnvVariable("VK_TOKEN")
 	vk := api.NewVK(token)
 	group, err := vk.GroupsGetByID(nil)
@@ -76,50 +79,50 @@ func newVKMessenger(baseMessenger BaseMessenger) *VKMessenger {
 		longPoll:      lp,
 	}
 
+	chats := make(map[int]*Chat)
+
 	lp.MessageNew(func(_ context.Context, obj events.MessageNewObject) {
-		messenger.ProcessMessage(obj)
+		id := obj.Message.PeerID
+		chat, exists := chats[id]
+		if !exists {
+			chat = NewChat(id, "vk")
+			messenger.chatCreatedCallback(chat)
+			chats[id] = chat
+		}
+		messenger.ProcessMessage(obj, chat)
 	})
 
 	return messenger
 }
 
-func findOriginal(message object.MessagesMessage) object.MessagesMessage {
-	for len(message.FwdMessages) != 0 {
-		message = message.FwdMessages[0]
-	}
-	return message
-}
+func (m *VKMessenger) SendMessage(message Message, chat *Chat) bool {
+	messageBuilder := params.NewMessagesSendBuilder()
+	messageBuilder.Message(message.Text)
+	messageBuilder.RandomID(0)
+	messageBuilder.PeerID(chat.ID)
 
-func getImages(message object.MessagesMessage) []string {
-	message = findOriginal(message)
-	images := []string{}
-
+	attachmentString := ""
 	for _, attachment := range message.Attachments {
-		if attachment.Type == "wall" {
-			for _, photo := range attachment.Wall.Attachments {
-				if photo.Type != "photo" {
-					continue
-				}
-				sizes := photo.Photo.Sizes
-				images = append(images, sizes[len(sizes)-1].URL)
-			}
+		file, err := os.Open(attachment.URL)
+		if err != nil {
+			log.Println("error opening file", attachment.URL)
+			continue
 		}
+		response, err := m.vk.UploadMessagesPhoto(chat.ID, file)
+		if err != nil {
+			log.Println("error loading file (vk)")
+			continue
+		}
+		attachmentString += fmt.Sprint(attachment.Type, response[len(response)-1].OwnerID, "_", response[len(response)-1].ID, ",")
 	}
+	messageBuilder.Attachment(attachmentString)
 
-	return images
-}
-
-func (m VKMessenger) SendMessage(message Message, chat *Chat) bool {
-	b := params.NewMessagesSendBuilder()
-	b.Message(message.Text)
-	b.RandomID(0)
-	b.PeerID(chat.ID)
-
-	_, err := m.vk.MessagesSend(api.Params(b.Params))
+	_, err := m.vk.MessagesSend(api.Params(messageBuilder.Params))
 	if err != nil {
-		log.Fatal(err)
+		log.Println(err)
+		return false
 	}
-	return false
+	return true
 }
 
 func (m *TGMessenger) SendMessage(message Message, chat *Chat) bool {
@@ -140,7 +143,7 @@ func (m *TGMessenger) SendMessage(message Message, chat *Chat) bool {
 			inputMedia := tgbotapi.InputMediaPhoto{
 				BaseInputMedia: tgbotapi.BaseInputMedia{
 					Type:    attachment.Type,
-					Media:   tgbotapi.FileURL(attachment.URL),
+					Media:   tgbotapi.FilePath(attachment.URL),
 					Caption: caption,
 				},
 			}
@@ -168,6 +171,33 @@ func (m *TGMessenger) ProcessMediaGroup(message *tgbotapi.Message, chat *Chat) {
 	m.MediaGroups[message.MediaGroupID] = nil
 }
 
+// returns path to saved file
+func (m *TGMessenger) saveTelegramFile(config tgbotapi.FileConfig) (string, error) {
+	file, err := m.tg.GetFile(config)
+	if err != nil {
+		log.Println("error loading file")
+		return "", err
+	}
+	err = DownloadFile(file.FilePath, file.Link(m.tg.Token))
+	if err != nil {
+		log.Println("error downloading file")
+		return "", err
+	}
+	return file.FilePath, nil
+}
+
+func (m *TGMessenger) addAttachment(attachments []*Attachment, fileID, fileType string) []*Attachment {
+	url, err := m.saveTelegramFile(tgbotapi.FileConfig{FileID: fileID})
+	if err == nil {
+		return append(attachments,
+			&Attachment{
+				Type: fileType,
+				URL:  url,
+			})
+	}
+	return attachments
+}
+
 func (m *TGMessenger) ProcessMessage(message *tgbotapi.Message, chat *Chat) {
 	if message.ReplyToMessage != nil {
 		m.ProcessMessage(message.ReplyToMessage, chat)
@@ -180,25 +210,10 @@ func (m *TGMessenger) ProcessMessage(message *tgbotapi.Message, chat *Chat) {
 			Sender: "usr",
 		}
 		if message.Photo != nil {
-			url, err := m.tg.GetFileDirectURL(message.Photo[len(message.Photo)-1].FileID)
-			if err == nil {
-				standardMessage.Attachments = append(standardMessage.Attachments,
-					&Attachment{
-						Type: "photo",
-						URL:  url,
-					})
-			}
+			standardMessage.Attachments = m.addAttachment(standardMessage.Attachments, message.Photo[len(message.Photo)-1].FileID, "photo")
 		}
 		if message.Video != nil {
-			url, err := m.tg.GetFileDirectURL(message.Video.FileID)
-			if err == nil {
-				standardMessage.Attachments = append(standardMessage.Attachments,
-					&Attachment{
-						Type: "video",
-						URL:  url,
-					})
-			}
-
+			standardMessage.Attachments = m.addAttachment(standardMessage.Attachments, message.Video.FileID, "video")
 		}
 		m.messageCallback(standardMessage, chat)
 	} else {
@@ -208,7 +223,7 @@ func (m *TGMessenger) ProcessMessage(message *tgbotapi.Message, chat *Chat) {
 			go m.ProcessMediaGroup(message, chat)
 		}
 
-		url, err := m.tg.GetFileDirectURL(message.Photo[len(message.Photo)-1].FileID)
+		url, err := m.saveTelegramFile(tgbotapi.FileConfig{FileID: message.Photo[len(message.Photo)-1].FileID})
 		if err != nil {
 			return
 		}
@@ -220,8 +235,16 @@ func (m *TGMessenger) ProcessMessage(message *tgbotapi.Message, chat *Chat) {
 	}
 }
 
-func getChatByVKID(id int64) *Chat {
-	return &Chat{}
+func (m *VKMessenger) ProcessCommand(message object.MessagesMessage, chat *Chat) bool {
+	if strings.HasPrefix(message.Text, "/get_token") {
+		m.SendMessage(Message{Text: chat.Token}, chat)
+		return true
+	} else if strings.HasPrefix(message.Text, "/subscribe") {
+		s := strings.Split(message.Text, " ")
+		m.subscribeCallback(chat, s[len(s)-1])
+		return true
+	}
+	return false
 }
 
 func (m *TGMessenger) ProcessCommand(message *tgbotapi.Message, chat *Chat) {
@@ -234,28 +257,50 @@ func (m *TGMessenger) ProcessCommand(message *tgbotapi.Message, chat *Chat) {
 	}
 }
 
-func (m VKMessenger) ProcessMessage(obj events.MessageNewObject) {
-	m.messageCallback(Message{Text: findOriginal(obj.Message).Text}, &Chat{obj.Message.PeerID, "vk_token", "vk", 0})
+func (m *VKMessenger) processWall(wall object.WallWallpost, attachments []*Attachment) []*Attachment {
+	return nil
 }
 
-func (m VKMessenger) Run() {
+func (m *VKMessenger) processPhoto(photo object.PhotosPhoto, attachments []*Attachment) []*Attachment {
+	url := photo.MaxSize().URL
+	ext := filepath.Ext(url)
+	path := fmt.Sprintf("vk_img/%d%s", photo.ID, ext)
+	DownloadFile(path, url)
+	return append(attachments, &Attachment{
+		Type: "photo",
+		URL:  path,
+	})
+}
+
+func (m *VKMessenger) ProcessMessage(obj events.MessageNewObject, chat *Chat) {
+	if m.ProcessCommand(obj.Message, chat) {
+		return
+	}
+	standardMessage := Message{
+		Text:   obj.Message.Text,
+		Sender: "vk", // TODO: find actual name
+	}
+	for _, attachment := range obj.Message.Attachments {
+		switch attachment.Type {
+		case "photo":
+			standardMessage.Attachments = m.processPhoto(attachment.Photo, standardMessage.Attachments)
+		case "wall":
+			standardMessage.Attachments = m.processWall(attachment.Wall, standardMessage.Attachments)
+		}
+	}
+	m.messageCallback(standardMessage, chat)
+}
+
+func (m *VKMessenger) Run() {
 	m.longPoll.Run()
 }
 
-func NewChat(id int) *Chat {
+func NewChat(id int, messenger string) *Chat {
 	length := 10
 	b := make([]byte, length)
 	rand.Read(b)
 	token := fmt.Sprintf("%x", b)[:length]
-	return &Chat{ID: id, Token: token, Type: "tg"}
-}
-
-func ReadTGMessage(message *tgbotapi.Message) *Message {
-	standardMessage := &Message{
-		Text:   message.Text,
-		Sender: message.SenderChat.UserName,
-	}
-	return standardMessage
+	return &Chat{ID: id, Token: token, Type: messenger}
 }
 
 func (m *TGMessenger) Run() {
@@ -274,7 +319,7 @@ func (m *TGMessenger) Run() {
 			// TODO: replace with db call
 			chat, present := chats[update.Message.Chat.ID]
 			if !present {
-				chat = NewChat(int(update.Message.Chat.ID))
+				chat = NewChat(int(update.Message.Chat.ID), "tg")
 				m.chatCreatedCallback(chat)
 				chats[update.Message.Chat.ID] = chat
 			}
