@@ -178,12 +178,13 @@ func (m *TGMessenger) saveTelegramFile(config tgbotapi.FileConfig) (string, erro
 		log.Println("error loading file")
 		return "", err
 	}
-	err = DownloadFile(file.FilePath, file.Link(m.tg.Token))
+	filePath := "downloads/" + file.FilePath
+	err = DownloadFile(filePath, file.Link(m.tg.Token))
 	if err != nil {
 		log.Println("error downloading file")
 		return "", err
 	}
-	return file.FilePath, nil
+	return filePath, nil
 }
 
 func (m *TGMessenger) addAttachment(attachments []*Attachment, fileID, fileType string) []*Attachment {
@@ -264,7 +265,7 @@ func (m *VKMessenger) processWall(wall object.WallWallpost, attachments []*Attac
 func (m *VKMessenger) processPhoto(photo object.PhotosPhoto, attachments []*Attachment) []*Attachment {
 	url := photo.MaxSize().URL
 	ext := filepath.Ext(url)
-	path := fmt.Sprintf("vk_img/%d%s", photo.ID, ext)
+	path := fmt.Sprintf("downloads/vk/%d%s", photo.ID, ext)
 	DownloadFile(path, url)
 	return append(attachments, &Attachment{
 		Type: "photo",
