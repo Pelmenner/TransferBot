@@ -30,8 +30,8 @@ func main() {
 
 	baseMessenger := BaseMessenger{messageCallback, subscriptionCallback, chatCreatedCallback}
 
-	VKMessenger := newVKMessenger(baseMessenger)
-	TGMessenger := newTGMessenger(baseMessenger)
+	VKMessenger := NewVKMessenger(baseMessenger)
+	TGMessenger := NewTGMessenger(baseMessenger)
 
 	messengers["vk"] = VKMessenger
 	messengers["tg"] = TGMessenger
