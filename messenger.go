@@ -129,8 +129,8 @@ func (m *TGMessenger) SendMessage(message Message, chat *Chat) bool {
 	msg := tgbotapi.NewMessage(int64(chat.ID), message.Text)
 	if len(message.Attachments) > 0 {
 		var media []interface{}
-		caption := ""
 		for i, attachment := range message.Attachments {
+			caption := ""
 			if i == 0 {
 				caption = message.Text
 			}
@@ -202,7 +202,6 @@ func (m *TGMessenger) addAttachment(attachments []*Attachment, fileID, fileType 
 func (m *TGMessenger) ProcessMessage(message *tgbotapi.Message, chat *Chat) {
 	if message.ReplyToMessage != nil {
 		m.ProcessMessage(message.ReplyToMessage, chat)
-		return
 	}
 
 	if message.MediaGroupID == "" {
@@ -258,8 +257,17 @@ func (m *TGMessenger) ProcessCommand(message *tgbotapi.Message, chat *Chat) {
 	}
 }
 
-func (m *VKMessenger) processWall(wall object.WallWallpost, attachments []*Attachment) []*Attachment {
-	return nil
+func (m *VKMessenger) processWall(wall object.WallWallpost, message *Message) {
+	if message.Text != "" {
+		message.Text += "\n"
+	}
+	message.Text += wall.Text
+
+	for _, attachment := range wall.Attachments {
+		if attachment.Type == "photo" {
+			message.Attachments = m.processPhoto(attachment.Photo, message.Attachments)
+		}
+	}
 }
 
 func (m *VKMessenger) processPhoto(photo object.PhotosPhoto, attachments []*Attachment) []*Attachment {
@@ -286,7 +294,7 @@ func (m *VKMessenger) ProcessMessage(obj events.MessageNewObject, chat *Chat) {
 		case "photo":
 			standardMessage.Attachments = m.processPhoto(attachment.Photo, standardMessage.Attachments)
 		case "wall":
-			standardMessage.Attachments = m.processWall(attachment.Wall, standardMessage.Attachments)
+			m.processWall(attachment.Wall, &standardMessage)
 		}
 	}
 	m.messageCallback(standardMessage, chat)
