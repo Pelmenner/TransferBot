@@ -152,10 +152,9 @@ func (m *TGMessenger) SendMessage(message Message, chat *Chat) bool {
 		mediaGroup := tgbotapi.NewMediaGroup(int64(chat.ID), media)
 		_, err := m.tg.SendMediaGroup(mediaGroup)
 		return err == nil
-	} else {
-		_, err := m.tg.Send(msg)
-		return err == nil
 	}
+	_, err := m.tg.Send(msg)
+	return err == nil
 }
 
 func (m *TGMessenger) ProcessMediaGroup(message *tgbotapi.Message, chat *Chat) {
