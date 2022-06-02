@@ -28,6 +28,7 @@ type Chat struct {
 	RowID int
 }
 
+// findSubscribedChats returns all chats subscribed on the given one
 func findSubscribedChats(db *sql.DB, chat Chat) []Chat {
 	rows, err := db.Query(`SELECT chat_id, token, chat_type, Chats.rowid
 	FROM Subscriptions JOIN Chats ON Subscriptions.destination_chat = Chats.rowid
@@ -51,6 +52,7 @@ func findSubscribedChats(db *sql.DB, chat Chat) []Chat {
 	return res
 }
 
+// addChat creates new chat entry with given id in messenger and type
 func addChat(db *sql.DB, chatID int, chatType string) bool {
 	length := 10
 	b := make([]byte, length)
@@ -67,14 +69,34 @@ func addChat(db *sql.DB, chatID int, chatType string) bool {
 	return true
 }
 
+// getChat returns chat object with given id in messenger
 func getChat(db *sql.DB, chatID int, charType string) Chat {
 	return Chat{}
 }
 
+// addUnsentMessage adds message to send later
 func addUnsentMessage(db *sql.DB, message Message) {
 
 }
 
+// getUnsentMessages returns all messages to send and deletes them from db
 func getUnsentMessages(db *sql.DB, maxCnt int) []Message {
 	return []Message{}
+}
+
+// Subscribes proveded chat on another with given token.
+//  Returns true on success
+func subscribe(db *sql.DB, subscriber *Chat, subscriptionToken string) bool {
+	return false
+}
+
+// Unsubscribes provided chat from another with given token.
+//  Returns true on success
+func unsubscribe(db *sql.DB, subscriber *Chat, subscriptionToken string) bool {
+	return false
+}
+
+// getUnusedAttachments returns all attachments which will be never sent anymore and deletes them
+func getUnusedAttachments(db *sql.DB) []*Attachment {
+	return []*Attachment{}
 }
