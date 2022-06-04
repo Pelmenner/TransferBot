@@ -17,9 +17,10 @@ type Attachment struct {
 }
 
 type Message struct {
-	Text        string
-	Sender      string
-	Attachments []*Attachment
+	DestinationChat Chat
+	Text            string
+	Sender          string
+	Attachments     []*Attachment
 }
 
 type Chat struct {
@@ -112,9 +113,61 @@ func addUnsentMessage(db *sql.DB, message Message) {
 
 }
 
+func getMessageAttachments(tx *sql.Tx, messageRowID int, attachments []*Attachment) error {
+	rows, err := tx.Query(`SELECT data_type, data_url
+						   FROM Attachments
+						   WHERE parent_message = $1`, &messageRowID)
+	if err != nil {
+		return err
+	}
+
+	for rows.Next() {
+		attachment := &Attachment{}
+		err = rows.Scan(&attachment.Type, &attachment.URL)
+		if err != nil {
+			return err
+		}
+		attachments = append(attachments, attachment)
+	}
+
+	return nil
+}
+
 // getUnsentMessages returns all messages to send and deletes them from db
 func getUnsentMessages(db *sql.DB, maxCnt int) []Message {
-	return []Message{}
+	res := []Message{}
+	err := Transact(db, &sql.TxOptions{ReadOnly: true},
+		func(tx *sql.Tx) error {
+			rows, err := tx.Query(`SELECT sender, message_text, Messages.rowid, chat_id, chat_type, token, Chats.rowid
+								   FROM Messages JOIN Chats ON Messages.destination_chat = Chats.rowid
+								   LIMIT $1`, &maxCnt)
+			if err != nil {
+				return err
+			}
+
+			for rows.Next() {
+				message := Message{}
+				messageRowID := -1
+				err := rows.Scan(&message.Sender, &message.Text, &messageRowID,
+					&message.DestinationChat.ID, &message.DestinationChat.Type,
+					&message.DestinationChat.Token, &message.DestinationChat.RowID)
+				if err != nil {
+					return err
+				}
+
+				if err = getMessageAttachments(tx, messageRowID, message.Attachments); err != nil {
+					return err
+				}
+			}
+			return nil
+		})
+
+	if err != nil {
+		log.Print(err)
+		return []Message{}
+	}
+
+	return res
 }
 
 func getChatRowIDByToken(tx *sql.Tx, token string) (int, error) {
