@@ -136,7 +136,9 @@ func getMessageAttachments(tx *sql.Tx, messageRowID int, attachments []*Attachme
 // getUnsentMessages returns all messages to send and deletes them from db
 func getUnsentMessages(db *sql.DB, maxCnt int) []Message {
 	res := []Message{}
-	err := Transact(db, &sql.TxOptions{ReadOnly: true},
+	err := Transact(db, &sql.TxOptions{
+		Isolation: sql.LevelSerializable,
+		ReadOnly:  false},
 		func(tx *sql.Tx) error {
 			rows, err := tx.Query(`SELECT sender, message_text, Messages.rowid, chat_id, chat_type, token, Chats.rowid
 								   FROM Messages JOIN Chats ON Messages.destination_chat = Chats.rowid
@@ -145,6 +147,8 @@ func getUnsentMessages(db *sql.DB, maxCnt int) []Message {
 				return err
 			}
 
+			messagesToDelete := []int{}
+			// TODO: remove queries from loop
 			for rows.Next() {
 				message := Message{}
 				messageRowID := -1
@@ -158,7 +162,21 @@ func getUnsentMessages(db *sql.DB, maxCnt int) []Message {
 				if err = getMessageAttachments(tx, messageRowID, message.Attachments); err != nil {
 					return err
 				}
+				messagesToDelete = append(messagesToDelete, messageRowID)
 			}
+
+			for _, id := range messagesToDelete {
+				_, err := tx.Exec("DELETE FROM Messages WHERE Messages.rowid = $1", &id)
+				if err != nil {
+					return err
+				}
+				_, err = tx.Exec(`UPDATE Messages SET parent_message = NULL
+				                   WHERE parent_message = $1`, &id)
+				if err != nil {
+					return err
+				}
+			}
+
 			return nil
 		})
 
