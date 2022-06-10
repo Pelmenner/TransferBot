@@ -23,10 +23,10 @@ type Message struct {
 }
 
 type Chat struct {
-	ID    int
+	ID    int64
 	Token string
 	Type  string
-	RowID int
+	RowID int64
 }
 
 type QueuedMessage struct {
@@ -80,25 +80,34 @@ func findSubscribedChats(db *sql.DB, chat Chat) []Chat {
 }
 
 // addChat creates new chat entry with given id in messenger and type
-func addChat(db *sql.DB, chatID int, chatType string) bool {
+func addChat(db *sql.DB, chatID int64, chatType string) *Chat {
 	length := 10
 	b := make([]byte, length)
 	rand.Read(b)
 	token := fmt.Sprintf("%x", b)[:length]
 
-	_, err := db.Exec("INSERT INTO Chats VALUES ($1, $2, $3)",
+	res, err := db.Exec("INSERT INTO Chats VALUES ($1, $2, $3)",
 		&chatID, &chatType, &token)
 	if err != nil {
 		log.Print(err)
-		return false
+		return nil
+	}
+	rowID, err := res.LastInsertId()
+	if err != nil {
+		log.Print(err)
+		return nil
 	}
 
-	return true
+	return &Chat{
+		ID:    chatID,
+		Token: token,
+		Type:  chatType,
+		RowID: rowID}
 }
 
 // getChat returns chat object with given id in messenger
 // if an error occured, returns nil and logs error
-func getChat(db *sql.DB, chatID int, chatType string) *Chat {
+func getChat(db *sql.DB, chatID int64, chatType string) *Chat {
 	res := Chat{ID: chatID, Type: chatType}
 	row := db.QueryRow(`SELECT token, rowid FROM Chats
 	WHERE chat_id = $1 AND chat_type = $2`, &chatID, &chatType)
