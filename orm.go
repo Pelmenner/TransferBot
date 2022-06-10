@@ -291,5 +291,46 @@ func unsubscribe(db *sql.DB, subscriber *Chat, subscriptionToken string) bool {
 
 // getUnusedAttachments returns all attachments which will be never sent anymore and deletes them
 func getUnusedAttachments(db *sql.DB) []*Attachment {
-	return []*Attachment{}
+	res := []*Attachment{}
+	err := Transact(db, &sql.TxOptions{
+		Isolation: sql.LevelSerializable,
+		ReadOnly:  false},
+		func(tx *sql.Tx) error {
+			rows, err := tx.Query(`SELECT data_type, data_url, Attachments.rowid
+						   		   FROM Attachments LEFT JOIN Messages
+								   ON Attachments.parent_message = Messages.rowid
+								   WHERE destination_chat IS NULL`)
+			if err != nil {
+				return err
+			}
+
+			stmt, err := tx.Prepare("DELETE FROM Attachments WHERE rowid = $1")
+			if err != nil {
+				return err
+			}
+
+			for rows.Next() {
+				attachment := Attachment{}
+				rowID := -1
+				err = rows.Scan(&attachment.Type, &attachment.URL, &rowID)
+				if err != nil {
+					return err
+				}
+
+				res = append(res, &attachment)
+				_, err = stmt.Exec(&rowID)
+				if err != nil {
+					return err
+				}
+			}
+
+			return nil
+		})
+
+	if err != nil {
+		log.Print(err)
+		return []*Attachment{}
+	}
+
+	return res
 }
