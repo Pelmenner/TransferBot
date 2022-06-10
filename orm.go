@@ -105,7 +105,9 @@ func getChat(db *sql.DB, chatID int, chatType string) *Chat {
 
 	err := row.Scan(&res.Token, &res.RowID)
 	if err != nil {
-		log.Print(err)
+		if err != sql.ErrNoRows {
+			log.Print(err)
+		}
 		return nil
 	}
 
