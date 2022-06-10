@@ -17,10 +17,9 @@ type Attachment struct {
 }
 
 type Message struct {
-	DestinationChat Chat
-	Text            string
-	Sender          string
-	Attachments     []*Attachment
+	Text        string
+	Sender      string
+	Attachments []*Attachment
 }
 
 type Chat struct {
@@ -28,6 +27,11 @@ type Chat struct {
 	Token string
 	Type  string
 	RowID int
+}
+
+type QueuedMessage struct {
+	Message
+	Destination Chat
 }
 
 func Transact(db *sql.DB, txOpts *sql.TxOptions, txFunc func(*sql.Tx) error) error {
@@ -134,8 +138,8 @@ func getMessageAttachments(tx *sql.Tx, messageRowID int, attachments []*Attachme
 }
 
 // getUnsentMessages returns all messages to send and deletes them from db
-func getUnsentMessages(db *sql.DB, maxCnt int) []Message {
-	res := []Message{}
+func getUnsentMessages(db *sql.DB, maxCnt int) []QueuedMessage {
+	res := []QueuedMessage{}
 	err := Transact(db, &sql.TxOptions{
 		Isolation: sql.LevelSerializable,
 		ReadOnly:  false},
@@ -150,11 +154,11 @@ func getUnsentMessages(db *sql.DB, maxCnt int) []Message {
 			messagesToDelete := []int{}
 			// TODO: remove queries from loop
 			for rows.Next() {
-				message := Message{}
+				message := QueuedMessage{}
 				messageRowID := -1
 				err := rows.Scan(&message.Sender, &message.Text, &messageRowID,
-					&message.DestinationChat.ID, &message.DestinationChat.Type,
-					&message.DestinationChat.Token, &message.DestinationChat.RowID)
+					&message.Destination.ID, &message.Destination.Type,
+					&message.Destination.Token, &message.Destination.RowID)
 				if err != nil {
 					return err
 				}
@@ -163,6 +167,7 @@ func getUnsentMessages(db *sql.DB, maxCnt int) []Message {
 					return err
 				}
 				messagesToDelete = append(messagesToDelete, messageRowID)
+				res = append(res, message)
 			}
 
 			for _, id := range messagesToDelete {
@@ -182,7 +187,7 @@ func getUnsentMessages(db *sql.DB, maxCnt int) []Message {
 
 	if err != nil {
 		log.Print(err)
-		return []Message{}
+		return []QueuedMessage{}
 	}
 
 	return res
