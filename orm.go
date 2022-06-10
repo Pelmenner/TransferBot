@@ -113,8 +113,42 @@ func getChat(db *sql.DB, chatID int, chatType string) *Chat {
 }
 
 // addUnsentMessage adds message to send later
-func addUnsentMessage(db *sql.DB, message Message) {
+func addUnsentMessage(db *sql.DB, message QueuedMessage) bool {
+	err := Transact(db, &sql.TxOptions{
+		Isolation: sql.LevelSerializable,
+		ReadOnly:  false},
+		func(tx *sql.Tx) error {
+			res, err := tx.Exec(`INSERT INTO Messages
+							     VALUES ($1, $2, $3)`,
+				&message.Destination.RowID,
+				&message.Sender, &message.Text)
+			if err != nil {
+				return err
+			}
+			messageRowID, err := res.LastInsertId()
+			if err != nil {
+				return err
+			}
 
+			// TODO: remove SQL query from loop
+			for _, attachment := range message.Attachments {
+				_, err := tx.Exec(`INSERT INTO Attachments
+								   VALUES ($1, $2, $3)`,
+					&attachment.Type, &attachment.URL, &messageRowID)
+				if err != nil {
+					return err
+				}
+			}
+
+			return nil
+		})
+
+	if err != nil {
+		log.Print(err)
+		return false
+	}
+
+	return true
 }
 
 func getMessageAttachments(tx *sql.Tx, messageRowID int, attachments []*Attachment) error {
