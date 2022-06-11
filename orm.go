@@ -34,7 +34,7 @@ type QueuedMessage struct {
 	Destination Chat
 }
 
-func Transact(db *sql.DB, txOpts *sql.TxOptions, txFunc func(*sql.Tx) error) error {
+func Transact(db *sql.DB, txOpts *sql.TxOptions, txFunc func(*sql.Tx) error) (err error) {
 	tx, err := db.BeginTx(context.TODO(), txOpts)
 	if err != nil {
 		return err
