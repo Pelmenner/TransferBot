@@ -9,7 +9,8 @@ CREATE TABLE IF NOT EXISTS Subscriptions (
     source_chat INTEGER NOT NULL,
     destination_chat INTEGER NOT NULL,
     FOREIGN KEY (source_chat) REFERENCES Chats(rowid),
-    FOREIGN KEY (destination_chat) REFERENCES Chats(rowid)
+    FOREIGN KEY (destination_chat) REFERENCES Chats(rowid),
+    CONSTRAINT single_subscription UNIQUE (source_chat, destination_chat)
 );
 
 CREATE TABLE IF NOT EXISTS Messages (
