@@ -61,7 +61,8 @@ func findSubscribedChats(db *sql.DB, chat Chat) []Chat {
 	FROM Subscriptions JOIN Chats ON Subscriptions.destination_chat = Chats.rowid
 	WHERE source_chat = $1`, chat.RowID)
 	if err != nil {
-		log.Fatal(err)
+		log.Print(err)
+		return []Chat{}
 	}
 
 	res := []Chat{}
@@ -70,7 +71,8 @@ func findSubscribedChats(db *sql.DB, chat Chat) []Chat {
 
 		err := rows.Scan(&buf.ID, &buf.Token, &buf.Type, &buf.RowID)
 		if err != nil {
-			log.Fatal(err)
+			log.Print(err)
+			return []Chat{}
 		}
 
 		res = append(res, buf)
