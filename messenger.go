@@ -106,7 +106,7 @@ func (m VKMessenger) SendMessage(message Message, chat *Chat) bool {
 	b := params.NewMessagesSendBuilder()
 	b.Message(message.Text)
 	b.RandomID(0)
-	b.PeerID(chat.ID)
+	b.PeerID(int(chat.ID))
 
 	_, err := m.vk.MessagesSend(api.Params(b.Params))
 	if err != nil {
@@ -141,14 +141,14 @@ func (m TGMessenger) ProcessCommand(message *tgbotapi.Message, chat *Chat) {
 }
 
 func (m VKMessenger) ProcessMessage(obj events.MessageNewObject) {
-	m.messageCallback(Message{Text: findOriginal(obj.Message).Text}, &Chat{obj.Message.PeerID, "vk_token", "vk", 0})
+	m.messageCallback(Message{Text: findOriginal(obj.Message).Text}, &Chat{int64(obj.Message.PeerID), "vk_token", "vk", 0})
 }
 
 func (m VKMessenger) Run() {
 	m.longPoll.Run()
 }
 
-func NewChat(id int) *Chat {
+func NewChat(id int64) *Chat {
 	length := 10
 	b := make([]byte, length)
 	rand.Read(b)
@@ -172,7 +172,7 @@ func (m TGMessenger) Run() {
 			// TODO: replace with db call
 			chat, present := chats[update.Message.Chat.ID]
 			if !present {
-				chat = NewChat(int(update.Message.Chat.ID))
+				chat = NewChat(update.Message.Chat.ID)
 				m.chatCreatedCallback(chat)
 				chats[update.Message.Chat.ID] = chat
 			}
