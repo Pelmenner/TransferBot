@@ -102,7 +102,8 @@ func addChat(db *sql.DB, chatID int64, chatType string) *Chat {
 		ID:    chatID,
 		Token: token,
 		Type:  chatType,
-		RowID: rowID}
+		RowID: rowID,
+	}
 }
 
 // getChat returns chat object with given id in messenger
@@ -127,7 +128,8 @@ func getChat(db *sql.DB, chatID int64, chatType string) *Chat {
 func addUnsentMessage(db *sql.DB, message QueuedMessage) bool {
 	err := Transact(db, &sql.TxOptions{
 		Isolation: sql.LevelSerializable,
-		ReadOnly:  false},
+		ReadOnly:  false,
+	},
 		func(tx *sql.Tx) error {
 			res, err := tx.Exec(`INSERT INTO Messages
 							     VALUES ($1, $2, $3)`,
@@ -187,7 +189,8 @@ func getUnsentMessages(db *sql.DB, maxCnt int) []QueuedMessage {
 	res := []QueuedMessage{}
 	err := Transact(db, &sql.TxOptions{
 		Isolation: sql.LevelSerializable,
-		ReadOnly:  false},
+		ReadOnly:  false,
+	},
 		func(tx *sql.Tx) error {
 			rows, err := tx.Query(`SELECT sender, message_text, Messages.rowid, chat_id, chat_type, token, Chats.rowid
 								   FROM Messages JOIN Chats ON Messages.destination_chat = Chats.rowid
@@ -250,7 +253,8 @@ func getChatRowIDByToken(tx *sql.Tx, token string) (int, error) {
 func subscribe(db *sql.DB, subscriber *Chat, subscriptionToken string) bool {
 	err := Transact(db, &sql.TxOptions{
 		Isolation: sql.LevelSerializable,
-		ReadOnly:  false},
+		ReadOnly:  false,
+	},
 		func(tx *sql.Tx) error {
 			subscriptionRowID, err := getChatRowIDByToken(tx, subscriptionToken)
 			if err != nil {
@@ -278,7 +282,8 @@ func subscribe(db *sql.DB, subscriber *Chat, subscriptionToken string) bool {
 func unsubscribe(db *sql.DB, subscriber *Chat, subscriptionToken string) bool {
 	err := Transact(db, &sql.TxOptions{
 		Isolation: sql.LevelSerializable,
-		ReadOnly:  false},
+		ReadOnly:  false,
+	},
 		func(tx *sql.Tx) error {
 			subscriptionRowID, err := getChatRowIDByToken(tx, subscriptionToken)
 			if err != nil {
@@ -305,7 +310,8 @@ func getUnusedAttachments(db *sql.DB) []*Attachment {
 	res := []*Attachment{}
 	err := Transact(db, &sql.TxOptions{
 		Isolation: sql.LevelSerializable,
-		ReadOnly:  false},
+		ReadOnly:  false,
+	},
 		func(tx *sql.Tx) error {
 			rows, err := tx.Query(`SELECT data_type, data_url, Attachments.rowid
 						   		   FROM Attachments LEFT JOIN Messages
