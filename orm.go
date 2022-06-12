@@ -81,12 +81,17 @@ func findSubscribedChats(db *sql.DB, chat Chat) []Chat {
 	return res
 }
 
-// addChat creates new chat entry with given id in messenger and type
-func addChat(db *sql.DB, chatID int64, chatType string) *Chat {
+func generateToken(chatID int64, chatType string) string {
 	length := 10
 	b := make([]byte, length)
 	rand.Read(b)
 	token := fmt.Sprintf("%x", b)[:length]
+	return token
+}
+
+// addChat creates new chat entry with given id in messenger and type
+func addChat(db *sql.DB, chatID int64, chatType string) *Chat {
+	token := generateToken(chatID, chatType)
 
 	res, err := db.Exec("INSERT INTO Chats VALUES ($1, $2, $3)",
 		&chatID, &chatType, &token)
