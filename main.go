@@ -1,34 +1,43 @@
 package main
 
 import (
+	"database/sql"
 	"log"
 )
 
 func main() {
-	subscriptions := make(map[*Chat][]*Chat)
 	messengers := make(map[string]Messenger)
-	tokens := make(map[string]*Chat)
+
+	db, err := sql.Open("sqlite3", "./db.sqlite3")
+	defer db.Close()
+	if err != nil {
+		log.Fatal("could not open database")
+	}
 
 	messageCallback := func(message Message, chat *Chat) {
 		log.Print("message:", message)
-		for _, subscription := range subscriptions[chat] {
-			messengers[subscription.Type].SendMessage(message, subscription)
+		subscribed := findSubscribedChats(db, *chat)
+		for _, subscription := range subscribed {
+			messengers[subscription.Type].SendMessage(message, &subscription)
 		}
 	}
 
 	subscriptionCallback := func(subscriber *Chat, subscriptionToken string) {
 		log.Print("subscription:", subscriber, subscriptionToken)
-		if subscription, exists := tokens[subscriptionToken]; exists {
-			subscriptions[subscription] = append(subscriptions[subscription], subscriber)
-			messengers[subscriber.Type].SendMessage(Message{Text: "successfully subcsribed!"}, subscriber)
+		if subscribe(db, subscriber, subscriptionToken) {
+			messengers[subscriber.Type].SendMessage(Message{Text: "successfully subscribed!"}, subscriber)
 		}
 	}
 
-	chatCreatedCallback := func(chat *Chat) {
-		tokens[chat.Token] = chat
+	getChatById := func(id int64, messenger string) *Chat {
+		return getChat(db, id, messenger)
 	}
 
-	baseMessenger := BaseMessenger{messageCallback, subscriptionCallback, chatCreatedCallback}
+	createNewChat := func(id int64, messenger string) *Chat {
+		return addChat(db, id, messenger)
+	}
+
+	baseMessenger := BaseMessenger{messageCallback, subscriptionCallback, getChatById, createNewChat}
 
 	VKMessenger := NewVKMessenger(baseMessenger)
 	TGMessenger := NewTGMessenger(baseMessenger)
@@ -38,7 +47,6 @@ func main() {
 
 	go TGMessenger.Run()
 
-	// Run Bots Long Poll
 	log.Println("Start Long Poll")
 	VKMessenger.Run()
 }

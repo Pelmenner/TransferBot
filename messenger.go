@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"math/rand"
 	"os"
 	"path/filepath"
 	"strings"
@@ -21,7 +20,8 @@ import (
 
 type CallbackOnMessageReceived func(message Message, chat *Chat)
 type CallbackOnSubscribe func(subsriber *Chat, subscriptionToken string)
-type CallbackOnChatCreated func(chat *Chat)
+type ChatGetter func(id int64, messenger string) *Chat
+type ChatCreator func(id int64, messenger string) *Chat
 
 type Messenger interface {
 	SendMessage(message Message, chat *Chat) bool
@@ -29,9 +29,10 @@ type Messenger interface {
 }
 
 type BaseMessenger struct {
-	messageCallback     CallbackOnMessageReceived
-	subscribeCallback   CallbackOnSubscribe
-	chatCreatedCallback CallbackOnChatCreated
+	messageCallback   CallbackOnMessageReceived
+	subscribeCallback CallbackOnSubscribe
+	getChatById       ChatGetter
+	createNewChat     ChatCreator
 }
 
 type VKMessenger struct {
@@ -79,15 +80,11 @@ func NewVKMessenger(baseMessenger BaseMessenger) *VKMessenger {
 		longPoll:      lp,
 	}
 
-	chats := make(map[int]*Chat)
-
 	lp.MessageNew(func(_ context.Context, obj events.MessageNewObject) {
 		id := obj.Message.PeerID
-		chat, exists := chats[id]
-		if !exists {
-			chat = NewChat(int64(id), "vk")
-			messenger.chatCreatedCallback(chat)
-			chats[id] = chat
+		chat := messenger.getChatById(int64(id), "vk")
+		if chat == nil {
+			chat = baseMessenger.createNewChat(int64(id), "vk")
 		}
 		messenger.ProcessMessage(obj, chat)
 	})
@@ -303,17 +300,7 @@ func (m *VKMessenger) Run() {
 	m.longPoll.Run()
 }
 
-func NewChat(id int64, messenger string) *Chat {
-	length := 10
-	b := make([]byte, length)
-	rand.Read(b)
-	token := fmt.Sprintf("%x", b)[:length]
-	return &Chat{ID: id, Token: token, Type: messenger}
-}
-
 func (m *TGMessenger) Run() {
-	chats := make(map[int64]*Chat)
-
 	for {
 		u := tgbotapi.NewUpdate(0)
 		u.Timeout = 60
@@ -324,12 +311,9 @@ func (m *TGMessenger) Run() {
 				continue
 			}
 
-			// TODO: replace with db call
-			chat, present := chats[update.Message.Chat.ID]
-			if !present {
-				chat = NewChat(update.Message.Chat.ID, "tg")
-				m.chatCreatedCallback(chat)
-				chats[update.Message.Chat.ID] = chat
+			chat := m.getChatById(update.Message.Chat.ID, "tg")
+			if chat == nil {
+				chat = m.createNewChat(update.Message.Chat.ID, "tg")
 			}
 
 			if update.Message.IsCommand() {
