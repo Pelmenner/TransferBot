@@ -51,7 +51,7 @@ type TGMessenger struct {
 }
 
 func NewTGMessenger(baseMessenger BaseMessenger) *TGMessenger {
-	token := goDotEnvVariable("TG_TOKEN")
+	token := os.Getenv("TG_TOKEN")
 	bot, err := tgbotapi.NewBotAPI(token)
 	if err != nil {
 		log.Panic(err)
@@ -64,7 +64,7 @@ func NewTGMessenger(baseMessenger BaseMessenger) *TGMessenger {
 }
 
 func NewVKMessenger(baseMessenger BaseMessenger) *VKMessenger {
-	token := goDotEnvVariable("VK_TOKEN")
+	token := os.Getenv("VK_TOKEN")
 	vk := api.NewVK(token)
 	group, err := vk.GroupsGetByID(nil)
 	if err != nil {
