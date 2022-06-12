@@ -124,7 +124,7 @@ func (m *VKMessenger) SendMessage(message Message, chat *Chat) bool {
 }
 
 func (m *TGMessenger) SendMessage(message Message, chat *Chat) bool {
-	msg := tgbotapi.NewMessage(int64(chat.ID), message.Text)
+	msg := tgbotapi.NewMessage(chat.ID, message.Text)
 	if len(message.Attachments) > 0 {
 		var media []interface{}
 		for i, attachment := range message.Attachments {
@@ -147,7 +147,7 @@ func (m *TGMessenger) SendMessage(message Message, chat *Chat) bool {
 			}
 			media = append(media, inputMedia)
 		}
-		mediaGroup := tgbotapi.NewMediaGroup(int64(chat.ID), media)
+		mediaGroup := tgbotapi.NewMediaGroup(chat.ID, media)
 		_, err := m.tg.SendMediaGroup(mediaGroup)
 		if err != nil {
 			log.Print("could not add tg attachment:", err)
