@@ -85,7 +85,7 @@ func NewVKMessenger(baseMessenger BaseMessenger) *VKMessenger {
 		id := obj.Message.PeerID
 		chat, exists := chats[id]
 		if !exists {
-			chat = NewChat(id, "vk")
+			chat = NewChat(int64(id), "vk")
 			messenger.chatCreatedCallback(chat)
 			chats[id] = chat
 		}
@@ -99,7 +99,7 @@ func (m *VKMessenger) SendMessage(message Message, chat *Chat) bool {
 	messageBuilder := params.NewMessagesSendBuilder()
 	messageBuilder.Message(message.Text)
 	messageBuilder.RandomID(0)
-	messageBuilder.PeerID(chat.ID)
+	messageBuilder.PeerID(int(chat.ID))
 
 	attachmentString := ""
 	for _, attachment := range message.Attachments {
@@ -108,7 +108,7 @@ func (m *VKMessenger) SendMessage(message Message, chat *Chat) bool {
 			log.Println("error opening file", attachment.URL)
 			continue
 		}
-		response, err := m.vk.UploadMessagesPhoto(chat.ID, file)
+		response, err := m.vk.UploadMessagesPhoto(int(chat.ID), file)
 		if err != nil {
 			log.Println("error loading file (vk)")
 			continue
@@ -303,7 +303,7 @@ func (m *VKMessenger) Run() {
 	m.longPoll.Run()
 }
 
-func NewChat(id int, messenger string) *Chat {
+func NewChat(id int64, messenger string) *Chat {
 	length := 10
 	b := make([]byte, length)
 	rand.Read(b)
@@ -327,7 +327,7 @@ func (m *TGMessenger) Run() {
 			// TODO: replace with db call
 			chat, present := chats[update.Message.Chat.ID]
 			if !present {
-				chat = NewChat(int(update.Message.Chat.ID), "tg")
+				chat = NewChat(update.Message.Chat.ID, "tg")
 				m.chatCreatedCallback(chat)
 				chats[update.Message.Chat.ID] = chat
 			}
