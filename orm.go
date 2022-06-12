@@ -2,10 +2,11 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
 	"fmt"
 	"log"
-	"math/rand"
+	"time"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -82,11 +83,10 @@ func findSubscribedChats(db *sql.DB, chat Chat) []Chat {
 }
 
 func generateToken(chatID int64, chatType string) string {
+	salt := time.Now().Format(time.UnixDate)
+	hash := sha256.Sum256([]byte(fmt.Sprintf("%v %s %s", chatID, chatType, salt)))
 	length := 10
-	b := make([]byte, length)
-	rand.Read(b)
-	token := fmt.Sprintf("%x", b)[:length]
-	return token
+	return fmt.Sprintf("%x", hash)[:length]
 }
 
 // addChat creates new chat entry with given id in messenger and type
