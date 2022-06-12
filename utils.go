@@ -2,24 +2,10 @@ package main
 
 import (
 	"io"
-	"log"
 	"net/http"
 	"os"
 	"path/filepath"
-
-	"github.com/joho/godotenv"
 )
-
-func goDotEnvVariable(key string) string {
-	// load .env file
-	err := godotenv.Load(".env")
-
-	if err != nil {
-		log.Fatal("Error loading .env file")
-	}
-
-	return os.Getenv(key)
-}
 
 func DownloadFile(filePath string, url string) error {
 	// Get the data

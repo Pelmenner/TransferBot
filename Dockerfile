@@ -13,7 +13,6 @@ RUN apk add sqlite gcc musl-dev
 COPY *.go ./
 COPY config/*.go ./config/
 COPY db_init.sql ./
-COPY .env ./
 RUN sqlite3 db.sqlite3 < db_init.sql
 RUN go build -o /transfer_bot
 
