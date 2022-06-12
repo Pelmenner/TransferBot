@@ -1,11 +1,13 @@
 package main
 
 import (
+	"Pelmenner/TransferBot/config"
 	"context"
+	"crypto/sha256"
 	"database/sql"
 	"fmt"
 	"log"
-	"math/rand"
+	"time"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -81,12 +83,15 @@ func findSubscribedChats(db *sql.DB, chat Chat) []Chat {
 	return res
 }
 
+func generateToken(chatID int64, chatType string) string {
+	salt := time.Now().Format(time.UnixDate)
+	hash := sha256.Sum256([]byte(fmt.Sprintf("%v %s %s", chatID, chatType, salt)))
+	return fmt.Sprintf("%x", hash)[:config.TokenLength]
+}
+
 // addChat creates new chat entry with given id in messenger and type
 func addChat(db *sql.DB, chatID int64, chatType string) *Chat {
-	length := 10
-	b := make([]byte, length)
-	rand.Read(b)
-	token := fmt.Sprintf("%x", b)[:length]
+	token := generateToken(chatID, chatType)
 
 	res, err := db.Exec("INSERT INTO Chats VALUES ($1, $2, $3)",
 		&chatID, &chatType, &token)
