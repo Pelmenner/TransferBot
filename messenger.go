@@ -1,10 +1,14 @@
 package main
 
 import (
+	"Pelmenner/TransferBot/config"
 	"context"
 	"fmt"
 	"log"
-	"math/rand"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/SevereCloud/vksdk/api/params"
@@ -17,7 +21,8 @@ import (
 
 type CallbackOnMessageReceived func(message Message, chat *Chat)
 type CallbackOnSubscribe func(subsriber *Chat, subscriptionToken string)
-type CallbackOnChatCreated func(chat *Chat)
+type ChatGetter func(id int64, messenger string) *Chat
+type ChatCreator func(id int64, messenger string) *Chat
 
 type Messenger interface {
 	SendMessage(message Message, chat *Chat) bool
@@ -25,9 +30,10 @@ type Messenger interface {
 }
 
 type BaseMessenger struct {
-	messageCallback     CallbackOnMessageReceived
-	subscribeCallback   CallbackOnSubscribe
-	chatCreatedCallback CallbackOnChatCreated
+	messageCallback   CallbackOnMessageReceived
+	subscribeCallback CallbackOnSubscribe
+	getChatById       ChatGetter
+	createNewChat     ChatCreator
 }
 
 type VKMessenger struct {
@@ -38,19 +44,25 @@ type VKMessenger struct {
 
 type TGMessenger struct {
 	BaseMessenger
-	tg *tgbotapi.BotAPI
+	tg              *tgbotapi.BotAPI
+	mediaGroups     map[string][]*Attachment
+	mediaGroupMutex sync.Mutex
 }
 
-func newTGMessenger(baseMessenger BaseMessenger) *TGMessenger {
+func NewTGMessenger(baseMessenger BaseMessenger) *TGMessenger {
 	token := goDotEnvVariable("TG_TOKEN")
 	bot, err := tgbotapi.NewBotAPI(token)
 	if err != nil {
 		log.Panic(err)
 	}
-	return &TGMessenger{baseMessenger, bot}
+	return &TGMessenger{
+		BaseMessenger: baseMessenger,
+		tg:            bot,
+		mediaGroups:   make(map[string][]*Attachment),
+	}
 }
 
-func newVKMessenger(baseMessenger BaseMessenger) *VKMessenger {
+func NewVKMessenger(baseMessenger BaseMessenger) *VKMessenger {
 	token := goDotEnvVariable("VK_TOKEN")
 	vk := api.NewVK(token)
 	group, err := vk.GroupsGetByID(nil)
@@ -70,67 +82,179 @@ func newVKMessenger(baseMessenger BaseMessenger) *VKMessenger {
 	}
 
 	lp.MessageNew(func(_ context.Context, obj events.MessageNewObject) {
-		messenger.ProcessMessage(obj)
+		id := obj.Message.PeerID
+		chat := messenger.getChatById(int64(id), "vk")
+		if chat == nil {
+			chat = baseMessenger.createNewChat(int64(id), "vk")
+		}
+		messenger.ProcessMessage(obj, chat)
 	})
 
 	return messenger
 }
 
-func findOriginal(message object.MessagesMessage) object.MessagesMessage {
-	for len(message.FwdMessages) != 0 {
-		message = message.FwdMessages[0]
-	}
-	return message
-}
+func (m *VKMessenger) SendMessage(message Message, chat *Chat) bool {
+	messageBuilder := params.NewMessagesSendBuilder()
+	messageBuilder.Message(message.Text)
+	messageBuilder.RandomID(0)
+	messageBuilder.PeerID(int(chat.ID))
 
-func getImages(message object.MessagesMessage) []string {
-	message = findOriginal(message)
-	images := []string{}
-
+	attachmentString := ""
 	for _, attachment := range message.Attachments {
-		if attachment.Type == "wall" {
-			for _, photo := range attachment.Wall.Attachments {
-				if photo.Type != "photo" {
-					continue
-				}
-				sizes := photo.Photo.Sizes
-				images = append(images, sizes[len(sizes)-1].URL)
-			}
+		file, err := os.Open(attachment.URL)
+		if err != nil {
+			log.Println("error opening file", attachment.URL)
+			continue
 		}
+		response, err := m.vk.UploadMessagesPhoto(int(chat.ID), file)
+		if err != nil {
+			log.Println("error loading file (vk)")
+			continue
+		}
+		attachmentString += fmt.Sprintf("%s%d_%d,", attachment.Type,
+			response[len(response)-1].OwnerID, response[len(response)-1].ID)
 	}
+	messageBuilder.Attachment(attachmentString)
 
-	return images
+	_, err := m.vk.MessagesSend(api.Params(messageBuilder.Params))
+	if err != nil {
+		log.Println(err)
+		return false
+	}
+	return true
 }
 
-func (m VKMessenger) SendMessage(message Message, chat *Chat) bool {
-	b := params.NewMessagesSendBuilder()
-	b.Message(message.Text)
-	b.RandomID(0)
-	b.PeerID(int(chat.ID))
+func (m *TGMessenger) SendMessage(message Message, chat *Chat) bool {
+	msg := tgbotapi.NewMessage(chat.ID, message.Text)
+	if len(message.Attachments) > 0 {
+		var media []interface{}
+		for i, attachment := range message.Attachments {
+			caption := ""
+			if i == 0 {
+				caption = message.Text
+			}
 
-	_, err := m.vk.MessagesSend(api.Params(b.Params))
+			if attachment.Type != "photo" {
+				log.Println("unknown type: ", attachment.Type)
+				continue
+			}
+
+			inputMedia := tgbotapi.InputMediaPhoto{
+				BaseInputMedia: tgbotapi.BaseInputMedia{
+					Type:    attachment.Type,
+					Media:   tgbotapi.FilePath(attachment.URL),
+					Caption: caption,
+				},
+			}
+			media = append(media, inputMedia)
+		}
+		mediaGroup := tgbotapi.NewMediaGroup(chat.ID, media)
+		_, err := m.tg.SendMediaGroup(mediaGroup)
+		if err != nil {
+			log.Print("could not add tg attachment:", err)
+		}
+		return err == nil
+	}
+
+	_, err := m.tg.Send(msg)
 	if err != nil {
-		log.Fatal(err)
+		log.Print("could not send tg message:", err)
+	}
+	return err == nil
+}
+
+func (m *TGMessenger) ProcessMediaGroup(message *tgbotapi.Message, chat *Chat) {
+	// wait for all media in a group to be received and processed (in another goroutine)
+	// we don't know when it ends, so just wait fixed time
+	time.Sleep(config.MediaGroupWaitTimeSec * time.Second)
+	m.mediaGroupMutex.Lock()
+	defer m.mediaGroupMutex.Unlock()
+
+	standardMessage := Message{message.Text + message.Caption, "usr", []*Attachment{}}
+	for _, attachment := range m.mediaGroups[message.MediaGroupID] {
+		standardMessage.Attachments = append(standardMessage.Attachments, attachment)
+	}
+	m.messageCallback(standardMessage, chat)
+	m.mediaGroups[message.MediaGroupID] = nil
+}
+
+// returns path to saved file
+func (m *TGMessenger) saveTelegramFile(config tgbotapi.FileConfig) string {
+	file, err := m.tg.GetFile(config)
+	if err != nil {
+		log.Println("error loading file", err)
+		return ""
+	}
+	filePath := "downloads/" + file.FilePath
+	err = DownloadFile(filePath, file.Link(m.tg.Token))
+	if err != nil {
+		log.Println("error downloading file", err)
+		return ""
+	}
+	return filePath
+}
+
+func (m *TGMessenger) addAttachment(attachments []*Attachment, fileID, fileType string) []*Attachment {
+	url := m.saveTelegramFile(tgbotapi.FileConfig{FileID: fileID})
+	if url != "" {
+		return append(attachments,
+			&Attachment{
+				Type: fileType,
+				URL:  url,
+			})
+	}
+	return attachments
+}
+
+func (m *TGMessenger) ProcessMessage(message *tgbotapi.Message, chat *Chat) {
+	if message.ReplyToMessage != nil {
+		m.ProcessMessage(message.ReplyToMessage, chat)
+	}
+
+	if message.MediaGroupID == "" {
+		standardMessage := Message{
+			Text:   message.Text,
+			Sender: "usr",
+		}
+		if message.Photo != nil {
+			standardMessage.Attachments = m.addAttachment(
+				standardMessage.Attachments, message.Photo[len(message.Photo)-1].FileID, "photo")
+		}
+		m.messageCallback(standardMessage, chat)
+	} else {
+		_, exists := m.mediaGroups[message.MediaGroupID]
+		if !exists {
+			// media group is splitted into different messages, we need to catch them all before processing it
+			go m.ProcessMediaGroup(message, chat)
+		}
+
+		url := m.saveTelegramFile(tgbotapi.FileConfig{
+			FileID: message.Photo[len(message.Photo)-1].FileID,
+		})
+		if url == "" {
+			return
+		}
+
+		m.mediaGroupMutex.Lock()
+		m.mediaGroups[message.MediaGroupID] = append(m.mediaGroups[message.MediaGroupID],
+			&Attachment{"photo", url})
+		m.mediaGroupMutex.Unlock()
+	}
+}
+
+func (m *VKMessenger) ProcessCommand(message object.MessagesMessage, chat *Chat) bool {
+	if strings.HasPrefix(message.Text, "/get_token") {
+		m.SendMessage(Message{Text: chat.Token}, chat)
+		return true
+	} else if strings.HasPrefix(message.Text, "/subscribe") {
+		s := strings.Split(message.Text, " ")
+		m.subscribeCallback(chat, s[len(s)-1])
+		return true
 	}
 	return false
 }
 
-func (m TGMessenger) SendMessage(message Message, chat *Chat) bool {
-	msg := tgbotapi.NewMessage(int64(chat.ID), message.Text)
-
-	_, err := m.tg.Send(msg)
-	return err == nil
-}
-
-func (m TGMessenger) ProcessMessage(message *tgbotapi.Message, chat *Chat) {
-	m.messageCallback(Message{Text: message.Text}, chat)
-}
-
-func getChatByVKID(id int64) *Chat {
-	return &Chat{}
-}
-
-func (m TGMessenger) ProcessCommand(message *tgbotapi.Message, chat *Chat) {
+func (m *TGMessenger) ProcessCommand(message *tgbotapi.Message, chat *Chat) {
 	switch message.Command() {
 	case "get_token":
 		msg := tgbotapi.NewMessage(message.Chat.ID, chat.Token)
@@ -140,28 +264,61 @@ func (m TGMessenger) ProcessCommand(message *tgbotapi.Message, chat *Chat) {
 	}
 }
 
-func (m VKMessenger) ProcessMessage(obj events.MessageNewObject) {
-	m.messageCallback(Message{Text: findOriginal(obj.Message).Text}, &Chat{int64(obj.Message.PeerID), "vk_token", "vk", 0})
+func (m *VKMessenger) processWall(wall object.WallWallpost, message *Message) {
+	if message.Text != "" {
+		message.Text += "\n"
+	}
+	message.Text += wall.Text
+
+	for _, attachment := range wall.Attachments {
+		if attachment.Type == "photo" {
+			message.Attachments = m.processPhoto(attachment.Photo, message.Attachments)
+		}
+	}
 }
 
-func (m VKMessenger) Run() {
+func (m *VKMessenger) processPhoto(photo object.PhotosPhoto, attachments []*Attachment) []*Attachment {
+	url := photo.MaxSize().URL
+	ext := filepath.Ext(url)
+	path := fmt.Sprintf("downloads/vk/%d%s", photo.ID, ext)
+	err := DownloadFile(path, url)
+	if err != nil {
+		log.Println("could not download vk photo:", err)
+		return attachments
+	}
+	return append(attachments, &Attachment{
+		Type: "photo",
+		URL:  path,
+	})
+}
+
+func (m *VKMessenger) ProcessMessage(obj events.MessageNewObject, chat *Chat) {
+	if m.ProcessCommand(obj.Message, chat) {
+		return
+	}
+	standardMessage := Message{
+		Text:   obj.Message.Text,
+		Sender: "vk", // TODO: find actual name
+	}
+	for _, attachment := range obj.Message.Attachments {
+		switch attachment.Type {
+		case "photo":
+			standardMessage.Attachments = m.processPhoto(attachment.Photo, standardMessage.Attachments)
+		case "wall":
+			m.processWall(attachment.Wall, &standardMessage)
+		}
+	}
+	m.messageCallback(standardMessage, chat)
+}
+
+func (m *VKMessenger) Run() {
 	m.longPoll.Run()
 }
 
-func NewChat(id int64) *Chat {
-	length := 10
-	b := make([]byte, length)
-	rand.Read(b)
-	token := fmt.Sprintf("%x", b)[:length]
-	return &Chat{ID: id, Token: token, Type: "tg"}
-}
-
-func (m TGMessenger) Run() {
-	chats := make(map[int64]*Chat)
-
+func (m *TGMessenger) Run() {
 	for {
 		u := tgbotapi.NewUpdate(0)
-		u.Timeout = 60
+		u.Timeout = config.TGBotAPITimeoutSec
 		updates := m.tg.GetUpdatesChan(u)
 
 		for update := range updates {
@@ -169,12 +326,9 @@ func (m TGMessenger) Run() {
 				continue
 			}
 
-			// TODO: replace with db call
-			chat, present := chats[update.Message.Chat.ID]
-			if !present {
-				chat = NewChat(update.Message.Chat.ID)
-				m.chatCreatedCallback(chat)
-				chats[update.Message.Chat.ID] = chat
+			chat := m.getChatById(update.Message.Chat.ID, "tg")
+			if chat == nil {
+				chat = m.createNewChat(update.Message.Chat.ID, "tg")
 			}
 
 			if update.Message.IsCommand() {
@@ -184,6 +338,6 @@ func (m TGMessenger) Run() {
 				m.ProcessMessage(update.Message, chat)
 			}
 		}
-		time.Sleep(50000 * time.Millisecond)
+		time.Sleep(config.TGSleepIntervalSec * time.Second)
 	}
 }
