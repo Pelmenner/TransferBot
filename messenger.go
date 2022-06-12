@@ -1,6 +1,7 @@
 package main
 
 import (
+	"Pelmenner/TransferBot/config"
 	"context"
 	"fmt"
 	"log"
@@ -163,7 +164,9 @@ func (m *TGMessenger) SendMessage(message Message, chat *Chat) bool {
 }
 
 func (m *TGMessenger) ProcessMediaGroup(message *tgbotapi.Message, chat *Chat) {
-	time.Sleep(2 * time.Second)
+	// wait for all media in a group to be received and processed (in another goroutine)
+	// we don't know when it ends, so just wait fixed time
+	time.Sleep(config.MediaGroupWaitTimeSec * time.Second)
 	m.mediaGroupMutex.Lock()
 	defer m.mediaGroupMutex.Unlock()
 
@@ -315,7 +318,7 @@ func (m *VKMessenger) Run() {
 func (m *TGMessenger) Run() {
 	for {
 		u := tgbotapi.NewUpdate(0)
-		u.Timeout = 60
+		u.Timeout = config.TGBotAPITimeoutSec
 		updates := m.tg.GetUpdatesChan(u)
 
 		for update := range updates {
@@ -335,6 +338,6 @@ func (m *TGMessenger) Run() {
 				m.ProcessMessage(update.Message, chat)
 			}
 		}
-		time.Sleep(50000 * time.Millisecond)
+		time.Sleep(config.TGSleepIntervalSec * time.Second)
 	}
 }
