@@ -1,6 +1,7 @@
 package main
 
 import (
+	"Pelmenner/TransferBot/config"
 	"context"
 	"crypto/sha256"
 	"database/sql"
@@ -85,8 +86,7 @@ func findSubscribedChats(db *sql.DB, chat Chat) []Chat {
 func generateToken(chatID int64, chatType string) string {
 	salt := time.Now().Format(time.UnixDate)
 	hash := sha256.Sum256([]byte(fmt.Sprintf("%v %s %s", chatID, chatType, salt)))
-	length := 10
-	return fmt.Sprintf("%x", hash)[:length]
+	return fmt.Sprintf("%x", hash)[:config.TokenLength]
 }
 
 // addChat creates new chat entry with given id in messenger and type
