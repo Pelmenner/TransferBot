@@ -44,8 +44,8 @@ type VKMessenger struct {
 type TGMessenger struct {
 	BaseMessenger
 	tg              *tgbotapi.BotAPI
-	MediaGroups     map[string][]*Attachment
-	MediaGroupMutex sync.Mutex
+	mediaGroups     map[string][]*Attachment
+	mediaGroupMutex sync.Mutex
 }
 
 func NewTGMessenger(baseMessenger BaseMessenger) *TGMessenger {
@@ -57,7 +57,7 @@ func NewTGMessenger(baseMessenger BaseMessenger) *TGMessenger {
 	return &TGMessenger{
 		BaseMessenger: baseMessenger,
 		tg:            bot,
-		MediaGroups:   make(map[string][]*Attachment),
+		mediaGroups:   make(map[string][]*Attachment),
 	}
 }
 
@@ -110,7 +110,8 @@ func (m *VKMessenger) SendMessage(message Message, chat *Chat) bool {
 			log.Println("error loading file (vk)")
 			continue
 		}
-		attachmentString += fmt.Sprint(attachment.Type, response[len(response)-1].OwnerID, "_", response[len(response)-1].ID, ",")
+		attachmentString += fmt.Sprintf("%s%d_%d,", attachment.Type,
+			response[len(response)-1].OwnerID, response[len(response)-1].ID)
 	}
 	messageBuilder.Attachment(attachmentString)
 
@@ -163,15 +164,15 @@ func (m *TGMessenger) SendMessage(message Message, chat *Chat) bool {
 
 func (m *TGMessenger) ProcessMediaGroup(message *tgbotapi.Message, chat *Chat) {
 	time.Sleep(2 * time.Second)
-	m.MediaGroupMutex.Lock()
-	defer m.MediaGroupMutex.Unlock()
+	m.mediaGroupMutex.Lock()
+	defer m.mediaGroupMutex.Unlock()
 
 	standardMessage := Message{message.Text + message.Caption, "usr", []*Attachment{}}
-	for _, attachment := range m.MediaGroups[message.MediaGroupID] {
+	for _, attachment := range m.mediaGroups[message.MediaGroupID] {
 		standardMessage.Attachments = append(standardMessage.Attachments, attachment)
 	}
 	m.messageCallback(standardMessage, chat)
-	m.MediaGroups[message.MediaGroupID] = nil
+	m.mediaGroups[message.MediaGroupID] = nil
 }
 
 // returns path to saved file
@@ -213,14 +214,12 @@ func (m *TGMessenger) ProcessMessage(message *tgbotapi.Message, chat *Chat) {
 			Sender: "usr",
 		}
 		if message.Photo != nil {
-			standardMessage.Attachments = m.addAttachment(standardMessage.Attachments, message.Photo[len(message.Photo)-1].FileID, "photo")
-		}
-		if message.Video != nil {
-			standardMessage.Attachments = m.addAttachment(standardMessage.Attachments, message.Video.FileID, "video")
+			standardMessage.Attachments = m.addAttachment(
+				standardMessage.Attachments, message.Photo[len(message.Photo)-1].FileID, "photo")
 		}
 		m.messageCallback(standardMessage, chat)
 	} else {
-		_, exists := m.MediaGroups[message.MediaGroupID]
+		_, exists := m.mediaGroups[message.MediaGroupID]
 		if !exists {
 			// media group is splitted into different messages, we need to catch them all before processing it
 			go m.ProcessMediaGroup(message, chat)
@@ -233,10 +232,10 @@ func (m *TGMessenger) ProcessMessage(message *tgbotapi.Message, chat *Chat) {
 			return
 		}
 
-		m.MediaGroupMutex.Lock()
-		m.MediaGroups[message.MediaGroupID] = append(m.MediaGroups[message.MediaGroupID],
+		m.mediaGroupMutex.Lock()
+		m.mediaGroups[message.MediaGroupID] = append(m.mediaGroups[message.MediaGroupID],
 			&Attachment{"photo", url})
-		m.MediaGroupMutex.Unlock()
+		m.mediaGroupMutex.Unlock()
 	}
 }
 
