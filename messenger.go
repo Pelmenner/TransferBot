@@ -148,9 +148,16 @@ func (m *TGMessenger) SendMessage(message Message, chat *Chat) bool {
 		}
 		mediaGroup := tgbotapi.NewMediaGroup(int64(chat.ID), media)
 		_, err := m.tg.SendMediaGroup(mediaGroup)
+		if err != nil {
+			log.Print("could not add tg attachment:", err)
+		}
 		return err == nil
 	}
+
 	_, err := m.tg.Send(msg)
+	if err != nil {
+		log.Print("could not send tg message:", err)
+	}
 	return err == nil
 }
 
@@ -168,24 +175,24 @@ func (m *TGMessenger) ProcessMediaGroup(message *tgbotapi.Message, chat *Chat) {
 }
 
 // returns path to saved file
-func (m *TGMessenger) saveTelegramFile(config tgbotapi.FileConfig) (string, error) {
+func (m *TGMessenger) saveTelegramFile(config tgbotapi.FileConfig) string {
 	file, err := m.tg.GetFile(config)
 	if err != nil {
-		log.Println("error loading file")
-		return "", err
+		log.Println("error loading file", err)
+		return ""
 	}
 	filePath := "downloads/" + file.FilePath
 	err = DownloadFile(filePath, file.Link(m.tg.Token))
 	if err != nil {
-		log.Println("error downloading file")
-		return "", err
+		log.Println("error downloading file", err)
+		return ""
 	}
-	return filePath, nil
+	return filePath
 }
 
 func (m *TGMessenger) addAttachment(attachments []*Attachment, fileID, fileType string) []*Attachment {
-	url, err := m.saveTelegramFile(tgbotapi.FileConfig{FileID: fileID})
-	if err == nil {
+	url := m.saveTelegramFile(tgbotapi.FileConfig{FileID: fileID})
+	if url != "" {
 		return append(attachments,
 			&Attachment{
 				Type: fileType,
@@ -219,8 +226,10 @@ func (m *TGMessenger) ProcessMessage(message *tgbotapi.Message, chat *Chat) {
 			go m.ProcessMediaGroup(message, chat)
 		}
 
-		url, err := m.saveTelegramFile(tgbotapi.FileConfig{FileID: message.Photo[len(message.Photo)-1].FileID})
-		if err != nil {
+		url := m.saveTelegramFile(tgbotapi.FileConfig{
+			FileID: message.Photo[len(message.Photo)-1].FileID,
+		})
+		if url == "" {
 			return
 		}
 
@@ -270,7 +279,11 @@ func (m *VKMessenger) processPhoto(photo object.PhotosPhoto, attachments []*Atta
 	url := photo.MaxSize().URL
 	ext := filepath.Ext(url)
 	path := fmt.Sprintf("downloads/vk/%d%s", photo.ID, ext)
-	DownloadFile(path, url)
+	err := DownloadFile(path, url)
+	if err != nil {
+		log.Println("could not download vk photo:", err)
+		return attachments
+	}
 	return append(attachments, &Attachment{
 		Type: "photo",
 		URL:  path,

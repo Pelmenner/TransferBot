@@ -11,7 +11,7 @@ func main() {
 	db, err := sql.Open("sqlite3", "./db.sqlite3")
 	defer db.Close()
 	if err != nil {
-		log.Fatal("could not open database")
+		log.Fatal("could not connect to database:", err)
 	}
 
 	messageCallback := func(message Message, chat *Chat) {
