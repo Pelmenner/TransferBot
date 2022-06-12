@@ -20,7 +20,7 @@ import (
 )
 
 type CallbackOnMessageReceived func(message Message, chat *Chat)
-type CallbackOnSubscribe func(subsriber *Chat, subscriptionToken string)
+type SubscriptionCallback func(subsriber *Chat, subscriptionToken string)
 type ChatGetter func(id int64, messenger string) *Chat
 type ChatCreator func(id int64, messenger string) *Chat
 
@@ -30,10 +30,11 @@ type Messenger interface {
 }
 
 type BaseMessenger struct {
-	messageCallback   CallbackOnMessageReceived
-	subscribeCallback CallbackOnSubscribe
-	getChatById       ChatGetter
-	createNewChat     ChatCreator
+	messageCallback     CallbackOnMessageReceived
+	subscribeCallback   SubscriptionCallback
+	unsubscribeCallback SubscriptionCallback
+	getChatById         ChatGetter
+	createNewChat       ChatCreator
 }
 
 type VKMessenger struct {
@@ -245,13 +246,16 @@ func (m *TGMessenger) ProcessMessage(message *tgbotapi.Message, chat *Chat) {
 func (m *VKMessenger) ProcessCommand(message object.MessagesMessage, chat *Chat) bool {
 	if strings.HasPrefix(message.Text, "/get_token") {
 		m.SendMessage(Message{Text: chat.Token}, chat)
-		return true
 	} else if strings.HasPrefix(message.Text, "/subscribe") {
 		s := strings.Split(message.Text, " ")
 		m.subscribeCallback(chat, s[len(s)-1])
-		return true
+	} else if strings.HasPrefix(message.Text, "/unsubscribe") {
+		s := strings.Split(message.Text, " ")
+		m.unsubscribeCallback(chat, s[len(s)-1])
+	} else {
+		return false
 	}
-	return false
+	return true
 }
 
 func (m *TGMessenger) ProcessCommand(message *tgbotapi.Message, chat *Chat) {
@@ -261,6 +265,8 @@ func (m *TGMessenger) ProcessCommand(message *tgbotapi.Message, chat *Chat) {
 		m.tg.Send(msg)
 	case "subscribe":
 		m.subscribeCallback(chat, message.CommandArguments())
+	case "unsubscribe":
+		m.unsubscribeCallback(chat, message.CommandArguments())
 	}
 }
 

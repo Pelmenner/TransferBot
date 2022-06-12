@@ -22,10 +22,17 @@ func main() {
 		}
 	}
 
-	subscriptionCallback := func(subscriber *Chat, subscriptionToken string) {
-		log.Print("subscription:", subscriber, subscriptionToken)
+	addSubscription := func(subscriber *Chat, subscriptionToken string) {
+		log.Printf("subscribe %+v on chat with token %s", subscriber, subscriptionToken)
 		if subscribe(db, subscriber, subscriptionToken) {
 			messengers[subscriber.Type].SendMessage(Message{Text: "successfully subscribed!"}, subscriber)
+		}
+	}
+
+	cancelSubscription := func(subscriber *Chat, subscriptionToken string) {
+		log.Printf("unsubscribe chat %+v from chat with token %s", subscriber, subscriptionToken)
+		if unsubscribe(db, subscriber, subscriptionToken) {
+			messengers[subscriber.Type].SendMessage(Message{Text: "successfully unsubscribed!"}, subscriber)
 		}
 	}
 
@@ -37,7 +44,7 @@ func main() {
 		return addChat(db, id, messenger)
 	}
 
-	baseMessenger := BaseMessenger{messageCallback, subscriptionCallback, getChatById, createNewChat}
+	baseMessenger := BaseMessenger{messageCallback, addSubscription, cancelSubscription, getChatById, createNewChat}
 
 	VKMessenger := NewVKMessenger(baseMessenger)
 	TGMessenger := NewTGMessenger(baseMessenger)
