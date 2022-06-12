@@ -133,7 +133,7 @@ func (m *TGMessenger) SendMessage(message Message, chat *Chat) bool {
 				caption = message.Text
 			}
 
-			if attachment.Type != "photo" && attachment.Type != "video" {
+			if attachment.Type != "photo" {
 				log.Println("unknown type: ", attachment.Type)
 				continue
 			}
