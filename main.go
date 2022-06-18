@@ -24,16 +24,24 @@ func main() {
 
 	addSubscription := func(subscriber *Chat, subscriptionToken string) {
 		log.Printf("subscribe %+v on chat with token %s", subscriber, subscriptionToken)
+		var statusMessage string
 		if subscribe(db, subscriber, subscriptionToken) {
-			messengers[subscriber.Type].SendMessage(Message{Text: "successfully subscribed!"}, subscriber)
+			statusMessage = "successfully subscribed!"
+		} else {
+			statusMessage = "could not subscribe on chat with given token"
 		}
+		messengers[subscriber.Type].SendMessage(Message{Text: statusMessage}, subscriber)
 	}
 
 	cancelSubscription := func(subscriber *Chat, subscriptionToken string) {
 		log.Printf("unsubscribe chat %+v from chat with token %s", subscriber, subscriptionToken)
+		var statusMessage string
 		if unsubscribe(db, subscriber, subscriptionToken) {
-			messengers[subscriber.Type].SendMessage(Message{Text: "successfully unsubscribed!"}, subscriber)
+			statusMessage = "successfully unsubscribed!"
+		} else {
+			statusMessage = "could not unsubscribe from chat with given token"
 		}
+		messengers[subscriber.Type].SendMessage(Message{Text: statusMessage}, subscriber)
 	}
 
 	getChatById := func(id int64, messenger string) *Chat {
