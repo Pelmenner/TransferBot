@@ -8,11 +8,11 @@ import (
 func main() {
 	messengers := make(map[string]Messenger)
 
-	db, err := sql.Open("sqlite3", "./db.sqlite3")
-	defer db.Close()
+	db, err := sql.Open("sqlite3", "data/db.sqlite3")
 	if err != nil {
 		log.Fatal("could not connect to database:", err)
 	}
+	defer db.Close()
 
 	messageCallback := func(message Message, chat *Chat) {
 		log.Print("message:", message)
