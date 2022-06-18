@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"database/sql"
+	"errors"
 	"fmt"
 	"log"
 	"time"
@@ -296,9 +297,19 @@ func unsubscribe(db *sql.DB, subscriber *Chat, subscriptionToken string) bool {
 			if err != nil {
 				return err
 			}
-			if _, err := tx.Exec("DELETE FROM Subscriptions WHERE source_chat = $1 AND destination_chat = $2",
-				&subscriptionRowID, &subscriber.RowID); err != nil {
+
+			res, err := tx.Exec("DELETE FROM Subscriptions WHERE source_chat = $1 AND destination_chat = $2",
+				&subscriptionRowID, &subscriber.RowID)
+			if err != nil {
 				return err
+			}
+
+			cntRemoved, err := res.RowsAffected()
+			if err != nil {
+				return err
+			}
+			if cntRemoved < 1 {
+				return errors.New("no subscription")
 			}
 
 			return nil
