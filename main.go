@@ -1,9 +1,29 @@
 package main
 
 import (
+	"Pelmenner/TransferBot/config"
 	"database/sql"
 	"log"
+	"os"
+	"time"
 )
+
+func deleteAttachment(attachment *Attachment) {
+	err := os.Remove(attachment.URL)
+	if err != nil {
+		log.Println("could not delete file", attachment.URL)
+	}
+}
+
+func repeatedFileCleanup(db *sql.DB) {
+	for {
+		attachments := getUnusedAttachments(db)
+		for _, attachment := range attachments {
+			deleteAttachment(attachment)
+		}
+		time.Sleep(time.Second * config.FileCleanupIntervalSec)
+	}
+}
 
 func main() {
 	messengers := make(map[string]Messenger)
@@ -17,8 +37,17 @@ func main() {
 	messageCallback := func(message Message, chat *Chat) {
 		log.Print("message:", message)
 		subscribed := findSubscribedChats(db, *chat)
+		sentToAllSubscribers := true
 		for _, subscription := range subscribed {
-			messengers[subscription.Type].SendMessage(message, &subscription)
+			if !messengers[subscription.Type].SendMessage(message, &subscription) {
+				addUnsentMessage(db, QueuedMessage{Message: message, Destination: subscription})
+				sentToAllSubscribers = false
+			}
+		}
+		if sentToAllSubscribers {
+			for _, attachment := range message.Attachments {
+				deleteAttachment(attachment)
+			}
 		}
 	}
 
@@ -60,6 +89,7 @@ func main() {
 	messengers["vk"] = VKMessenger
 	messengers["tg"] = TGMessenger
 
+	go repeatedFileCleanup(db)
 	go TGMessenger.Run()
 
 	log.Println("Start Long Poll")
