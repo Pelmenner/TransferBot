@@ -45,9 +45,10 @@ type VKMessenger struct {
 
 type TGMessenger struct {
 	BaseMessenger
-	tg              *tgbotapi.BotAPI
-	mediaGroups     map[string][]*Attachment
-	mediaGroupMutex sync.Mutex
+	tg                   *tgbotapi.BotAPI
+	mediaGroups          map[string][]*Attachment
+	mediaGroupMutex      sync.Mutex
+	mediaGroupLoadingCnt map[string]int
 }
 
 func NewTGMessenger(baseMessenger BaseMessenger) *TGMessenger {
@@ -57,9 +58,10 @@ func NewTGMessenger(baseMessenger BaseMessenger) *TGMessenger {
 		log.Panic(err)
 	}
 	return &TGMessenger{
-		BaseMessenger: baseMessenger,
-		tg:            bot,
-		mediaGroups:   make(map[string][]*Attachment),
+		BaseMessenger:        baseMessenger,
+		tg:                   bot,
+		mediaGroups:          make(map[string][]*Attachment),
+		mediaGroupLoadingCnt: make(map[string]int),
 	}
 }
 
@@ -187,6 +189,15 @@ func (m *TGMessenger) ProcessMediaGroup(message *tgbotapi.Message, chat *Chat) {
 	// wait for all media in a group to be received and processed (in another goroutine)
 	// we don't know when it ends, so just wait fixed time
 	time.Sleep(config.MediaGroupWaitTimeSec * time.Second)
+	for {
+		m.mediaGroupMutex.Lock()
+		cnt, exists := m.mediaGroupLoadingCnt[message.MediaGroupID]
+		m.mediaGroupMutex.Unlock()
+		if exists && cnt == 0 {
+			break
+		}
+		time.Sleep(config.CompletenessCheckDelaySec)
+	}
 	m.mediaGroupMutex.Lock()
 	defer m.mediaGroupMutex.Unlock()
 
@@ -195,7 +206,8 @@ func (m *TGMessenger) ProcessMediaGroup(message *tgbotapi.Message, chat *Chat) {
 		standardMessage.Attachments = append(standardMessage.Attachments, attachment)
 	}
 	m.messageCallback(standardMessage, chat)
-	m.mediaGroups[message.MediaGroupID] = nil
+	delete(m.mediaGroups, message.MediaGroupID)
+	delete(m.mediaGroupLoadingCnt, message.MediaGroupID)
 }
 
 // returns path to saved file
@@ -231,6 +243,9 @@ func (m *TGMessenger) addAttachment(attachments []*Attachment, fileID, fileName,
 }
 
 func (m *TGMessenger) addMediaGroupAttachment(fileID, fileName, fileType, mediaGroupID string) {
+	m.mediaGroupMutex.Lock()
+	m.mediaGroupLoadingCnt[mediaGroupID]++
+	m.mediaGroupMutex.Unlock()
 	url := m.saveTelegramFile(tgbotapi.FileConfig{FileID: fileID}, fileName)
 	if url == "" {
 		return
@@ -239,6 +254,7 @@ func (m *TGMessenger) addMediaGroupAttachment(fileID, fileName, fileType, mediaG
 	m.mediaGroupMutex.Lock()
 	m.mediaGroups[mediaGroupID] = append(m.mediaGroups[mediaGroupID],
 		&Attachment{fileType, url})
+	m.mediaGroupLoadingCnt[mediaGroupID]--
 	m.mediaGroupMutex.Unlock()
 }
 
@@ -390,10 +406,10 @@ func (m *TGMessenger) Run() {
 			}
 
 			if update.Message.IsCommand() {
-				m.ProcessCommand(update.Message, chat)
+				go m.ProcessCommand(update.Message, chat)
 			} else { // If we got a message
 				log.Printf("[%s] %s", update.Message.From.UserName, update.Message.Text)
-				m.ProcessMessage(update.Message, chat)
+				go m.ProcessMessage(update.Message, chat)
 			}
 		}
 		time.Sleep(config.TGSleepIntervalSec * time.Second)
