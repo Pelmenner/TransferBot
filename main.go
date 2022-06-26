@@ -5,13 +5,18 @@ import (
 	"database/sql"
 	"log"
 	"os"
+	"path/filepath"
 	"time"
 )
 
 func deleteAttachment(attachment *Attachment) {
 	err := os.Remove(attachment.URL)
 	if err != nil {
-		log.Println("could not delete file", attachment.URL)
+		log.Println("could not delete file", attachment.URL, err)
+	}
+	err = os.Remove(filepath.Dir(attachment.URL))
+	if err != nil {
+		log.Println("could not delete directory", filepath.Dir(attachment.URL), err)
 	}
 }
 
