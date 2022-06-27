@@ -106,13 +106,13 @@ func (m *VKMessenger) SendMessage(message Message, chat *Chat) bool {
 	for _, attachment := range message.Attachments {
 		file, err := os.Open(attachment.URL)
 		if err != nil {
-			log.Println("error opening file", attachment.URL)
+			log.Print("error opening file", attachment.URL)
 			continue
 		}
 		if attachment.Type == "photo" {
 			response, err := m.vk.UploadMessagesPhoto(int(chat.ID), file)
 			if err != nil {
-				log.Println("error loading photo (vk):", err)
+				log.Print("error loading photo (vk):", err)
 				continue
 			}
 			attachmentString += fmt.Sprintf("%s%d_%d,", attachment.Type,
@@ -120,7 +120,7 @@ func (m *VKMessenger) SendMessage(message Message, chat *Chat) bool {
 		} else if attachment.Type == "doc" {
 			response, err := m.vk.UploadMessagesDoc(int(chat.ID), "doc", attachment.URL, "", file)
 			if err != nil {
-				log.Println("error loading file (vk):", err)
+				log.Print("error loading file (vk):", err)
 				continue
 			}
 			attachmentString += fmt.Sprintf("%s%d_%d,", attachment.Type,
@@ -132,7 +132,7 @@ func (m *VKMessenger) SendMessage(message Message, chat *Chat) bool {
 
 	_, err := m.vk.MessagesSend(api.Params(messageBuilder.Params))
 	if err != nil {
-		log.Println(err)
+		log.Print(err)
 		return false
 	}
 	return true
@@ -153,9 +153,6 @@ func (m *TGMessenger) SendMessage(message Message, chat *Chat) bool {
 				fileType = "photo"
 			} else if attachment.Type == "doc" {
 				fileType = "document"
-			} else {
-				log.Println("unknown type: ", attachment.Type)
-				continue
 			}
 
 			baseInputMedia := tgbotapi.BaseInputMedia{
@@ -209,7 +206,7 @@ func (m *TGMessenger) ProcessMediaGroup(message *tgbotapi.Message, chat *Chat) {
 func (m *TGMessenger) saveTelegramFile(config tgbotapi.FileConfig, fileName string) string {
 	file, err := m.tg.GetFile(config)
 	if err != nil {
-		log.Println("error loading file", err)
+		log.Print("error loading file", err)
 		return ""
 	}
 
@@ -219,7 +216,7 @@ func (m *TGMessenger) saveTelegramFile(config tgbotapi.FileConfig, fileName stri
 	filePath := fmt.Sprintf("data/downloads/tg/%s/%s", file.FileID, fileName)
 	err = DownloadFile(filePath, file.Link(m.tg.Token))
 	if err != nil {
-		log.Println("error downloading file", err)
+		log.Print("error downloading file", err)
 		return ""
 	}
 	return filePath
@@ -339,7 +336,7 @@ func downloadVKFile(url string, fileID int, chatID int64, fileTitle string, atta
 	path := fmt.Sprintf("data/downloads/vk/%d/%d/%s", chatID, fileID, fileTitle)
 	err := DownloadFile(path, url)
 	if err != nil {
-		log.Println("could not download vk", attachmentType, ": ", err)
+		log.Print("could not download vk", attachmentType, ": ", err)
 		return nil
 	}
 	return &Attachment{
