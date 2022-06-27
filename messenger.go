@@ -45,10 +45,10 @@ type VKMessenger struct {
 
 type TGMessenger struct {
 	BaseMessenger
-	tg                   *tgbotapi.BotAPI
-	mediaGroups          map[string][]*Attachment
-	mediaGroupMutex      sync.Mutex
-	mediaGroupLoadingCnt map[string]int
+	tg                 *tgbotapi.BotAPI
+	mediaGroups        map[string][]*Attachment
+	mediaGroupMutex    sync.Mutex
+	mediaGroupLoadings map[string]*sync.WaitGroup
 }
 
 func NewTGMessenger(baseMessenger BaseMessenger) *TGMessenger {
@@ -58,10 +58,10 @@ func NewTGMessenger(baseMessenger BaseMessenger) *TGMessenger {
 		log.Panic(err)
 	}
 	return &TGMessenger{
-		BaseMessenger:        baseMessenger,
-		tg:                   bot,
-		mediaGroups:          make(map[string][]*Attachment),
-		mediaGroupLoadingCnt: make(map[string]int),
+		BaseMessenger:      baseMessenger,
+		tg:                 bot,
+		mediaGroups:        make(map[string][]*Attachment),
+		mediaGroupLoadings: make(map[string]*sync.WaitGroup),
 	}
 }
 
@@ -189,15 +189,10 @@ func (m *TGMessenger) ProcessMediaGroup(message *tgbotapi.Message, chat *Chat) {
 	// wait for all media in a group to be received and processed (in another goroutine)
 	// we don't know when it ends, so just wait fixed time
 	time.Sleep(config.MediaGroupWaitTimeSec * time.Second)
-	for {
-		m.mediaGroupMutex.Lock()
-		cnt, exists := m.mediaGroupLoadingCnt[message.MediaGroupID]
-		m.mediaGroupMutex.Unlock()
-		if exists && cnt == 0 {
-			break
-		}
-		time.Sleep(config.CompletenessCheckDelaySec)
-	}
+	m.mediaGroupMutex.Lock()
+	loadingWaiter := m.mediaGroupLoadings[message.MediaGroupID]
+	m.mediaGroupMutex.Unlock()
+	loadingWaiter.Wait()
 	m.mediaGroupMutex.Lock()
 	defer m.mediaGroupMutex.Unlock()
 
@@ -207,7 +202,7 @@ func (m *TGMessenger) ProcessMediaGroup(message *tgbotapi.Message, chat *Chat) {
 	}
 	m.messageCallback(standardMessage, chat)
 	delete(m.mediaGroups, message.MediaGroupID)
-	delete(m.mediaGroupLoadingCnt, message.MediaGroupID)
+	delete(m.mediaGroupLoadings, message.MediaGroupID)
 }
 
 // returns path to saved file
@@ -244,8 +239,12 @@ func (m *TGMessenger) addAttachment(attachments []*Attachment, fileID, fileName,
 
 func (m *TGMessenger) addMediaGroupAttachment(fileID, fileName, fileType, mediaGroupID string) {
 	m.mediaGroupMutex.Lock()
-	m.mediaGroupLoadingCnt[mediaGroupID]++
+	if _, exists := m.mediaGroupLoadings[mediaGroupID]; !exists {
+		m.mediaGroupLoadings[mediaGroupID] = &sync.WaitGroup{}
+	}
+	m.mediaGroupLoadings[mediaGroupID].Add(1)
 	m.mediaGroupMutex.Unlock()
+
 	url := m.saveTelegramFile(tgbotapi.FileConfig{FileID: fileID}, fileName)
 	if url == "" {
 		return
@@ -254,7 +253,7 @@ func (m *TGMessenger) addMediaGroupAttachment(fileID, fileName, fileType, mediaG
 	m.mediaGroupMutex.Lock()
 	m.mediaGroups[mediaGroupID] = append(m.mediaGroups[mediaGroupID],
 		&Attachment{fileType, url})
-	m.mediaGroupLoadingCnt[mediaGroupID]--
+	m.mediaGroupLoadings[mediaGroupID].Done()
 	m.mediaGroupMutex.Unlock()
 }
 
@@ -280,6 +279,9 @@ func (m *TGMessenger) ProcessMessage(message *tgbotapi.Message, chat *Chat) {
 	} else {
 		_, exists := m.mediaGroups[message.MediaGroupID]
 		if !exists {
+			m.mediaGroupMutex.Lock()
+			m.mediaGroups[message.MediaGroupID] = make([]*Attachment, 0)
+			m.mediaGroupMutex.Unlock()
 			// media group is splitted into different messages, we need to catch them all before processing it
 			go m.ProcessMediaGroup(message, chat)
 		}
