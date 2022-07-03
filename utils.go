@@ -33,3 +33,7 @@ func DownloadFile(filePath string, url string) error {
 	_, err = io.Copy(out, resp.Body)
 	return err
 }
+
+func concatenateMessageSender(user, chat string) string {
+	return user + "/" + chat
+}

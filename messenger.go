@@ -90,7 +90,7 @@ func NewVKMessenger(baseMessenger BaseMessenger) *VKMessenger {
 		if chat == nil {
 			chat = baseMessenger.createNewChat(int64(id), "vk")
 		}
-		messenger.ProcessMessage(obj, chat)
+		messenger.ProcessMessage(obj.Message, chat)
 	})
 
 	return messenger
@@ -98,7 +98,7 @@ func NewVKMessenger(baseMessenger BaseMessenger) *VKMessenger {
 
 func (m *VKMessenger) SendMessage(message Message, chat *Chat) bool {
 	messageBuilder := params.NewMessagesSendBuilder()
-	messageBuilder.Message(message.Text)
+	messageBuilder.Message(message.Sender + "\n" + message.Text)
 	messageBuilder.RandomID(0)
 	messageBuilder.PeerID(int(chat.ID))
 
@@ -139,13 +139,14 @@ func (m *VKMessenger) SendMessage(message Message, chat *Chat) bool {
 }
 
 func (m *TGMessenger) SendMessage(message Message, chat *Chat) bool {
-	msg := tgbotapi.NewMessage(chat.ID, message.Text)
+	text := message.Sender + "\n" + message.Text
+	msg := tgbotapi.NewMessage(chat.ID, text)
 	if len(message.Attachments) > 0 {
 		var media []interface{}
 		for i, attachment := range message.Attachments {
 			caption := ""
 			if i == 0 {
-				caption = message.Text
+				caption = text
 			}
 
 			fileType := ""
@@ -193,7 +194,7 @@ func (m *TGMessenger) ProcessMediaGroup(message *tgbotapi.Message, chat *Chat) {
 	m.mediaGroupMutex.Lock()
 	defer m.mediaGroupMutex.Unlock()
 
-	standardMessage := Message{message.Text + message.Caption, "usr", []*Attachment{}}
+	standardMessage := Message{message.Text + message.Caption, getTGSenderName(message), []*Attachment{}}
 	for _, attachment := range m.mediaGroups[message.MediaGroupID] {
 		standardMessage.Attachments = append(standardMessage.Attachments, attachment)
 	}
@@ -254,6 +255,17 @@ func (m *TGMessenger) addMediaGroupAttachment(fileID, fileName, fileType, mediaG
 	m.mediaGroupMutex.Unlock()
 }
 
+func getTGSenderName(message *tgbotapi.Message) string {
+	sender := concatenateMessageSender(message.From.UserName, message.Chat.Title)
+	if message.ForwardFrom != nil {
+		sender += "\n" + message.ForwardFrom.UserName
+	}
+	if message.ForwardFromChat != nil {
+		sender += "\n" + message.ForwardFromChat.Title
+	}
+	return sender
+}
+
 func (m *TGMessenger) ProcessMessage(message *tgbotapi.Message, chat *Chat) {
 	if message.ReplyToMessage != nil {
 		m.ProcessMessage(message.ReplyToMessage, chat)
@@ -261,8 +273,8 @@ func (m *TGMessenger) ProcessMessage(message *tgbotapi.Message, chat *Chat) {
 
 	if message.MediaGroupID == "" {
 		standardMessage := Message{
-			Text:   message.Text,
-			Sender: "usr",
+			Text:   message.Text + message.Caption,
+			Sender: getTGSenderName(message),
 		}
 		if message.Photo != nil {
 			standardMessage.Attachments = m.addAttachment(
@@ -292,6 +304,16 @@ func (m *TGMessenger) ProcessMessage(message *tgbotapi.Message, chat *Chat) {
 	}
 }
 
+func (m *VKMessenger) getSenderName(message object.MessagesMessage) string {
+	userResponse, err := m.vk.UsersGet(api.Params{"user_ids": message.FromID})
+	if err != nil {
+		log.Print("could not find vk user with id ", message.FromID, err)
+		return ""
+	}
+	// have not found a way to get chat name
+	return concatenateMessageSender(userResponse[0].FirstName+" "+userResponse[0].LastName, "vk")
+}
+
 func (m *VKMessenger) ProcessCommand(message object.MessagesMessage, chat *Chat) bool {
 	if strings.HasPrefix(message.Text, "/get_token") {
 		m.SendMessage(Message{Text: chat.Token}, chat)
@@ -319,17 +341,27 @@ func (m *TGMessenger) ProcessCommand(message *tgbotapi.Message, chat *Chat) {
 	}
 }
 
-func (m *VKMessenger) processWall(wall object.WallWallpost, chatID int64, message *Message) {
-	if message.Text != "" {
-		message.Text += "\n"
+func (m *VKMessenger) getWallAuthor(wall *object.WallWallpost) string {
+	userResponce, err := m.vk.GroupsGetByID(api.Params{"user_ids": wall.FromID})
+	if err != nil {
+		log.Print("could not find community with id ", wall.FromID)
+		return ""
 	}
-	message.Text += wall.Text
+	return concatenateMessageSender(userResponce[0].Name, "vk")
+}
+
+func (m *VKMessenger) processWall(wall object.WallWallpost, chat *Chat) {
+	message := Message{
+		Text:   wall.Text,
+		Sender: m.getWallAuthor(&wall),
+	}
 
 	for _, attachment := range wall.Attachments {
 		if attachment.Type == "photo" {
-			message.Attachments = m.processPhoto(attachment.Photo, chatID, message.Attachments)
+			message.Attachments = m.processPhoto(attachment.Photo, chat.ID, message.Attachments)
 		}
 	}
+	m.messageCallback(message, chat)
 }
 
 func downloadVKFile(url string, fileID int, chatID int64, fileTitle string, attachmentType string) *Attachment {
@@ -363,25 +395,33 @@ func (m *VKMessenger) processDocument(document object.DocsDoc, chatID int64, att
 	return attachments
 }
 
-func (m *VKMessenger) ProcessMessage(obj events.MessageNewObject, chat *Chat) {
-	if m.ProcessCommand(obj.Message, chat) {
+func (m *VKMessenger) ProcessMessage(message object.MessagesMessage, chat *Chat) {
+	if m.ProcessCommand(message, chat) {
 		return
 	}
 	standardMessage := Message{
-		Text:   obj.Message.Text,
-		Sender: "vk", // TODO: find actual name
+		Text:   message.Text,
+		Sender: m.getSenderName(message),
 	}
-	for _, attachment := range obj.Message.Attachments {
+	walls := []*object.WallWallpost{}
+	for _, attachment := range message.Attachments {
 		switch attachment.Type {
 		case "photo":
 			standardMessage.Attachments = m.processPhoto(attachment.Photo, chat.ID, standardMessage.Attachments)
 		case "wall":
-			m.processWall(attachment.Wall, chat.ID, &standardMessage)
+			walls = append(walls, &attachment.Wall)
 		case "doc":
 			standardMessage.Attachments = m.processDocument(attachment.Doc, chat.ID, standardMessage.Attachments)
 		}
 	}
 	m.messageCallback(standardMessage, chat)
+	for _, wall := range walls {
+		m.processWall(*wall, chat)
+	}
+
+	for _, message := range message.FwdMessages {
+		m.ProcessMessage(message, chat)
+	}
 }
 
 func (m *VKMessenger) Run() {
