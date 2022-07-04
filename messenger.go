@@ -342,12 +342,24 @@ func (m *TGMessenger) ProcessCommand(message *tgbotapi.Message, chat *Chat) {
 }
 
 func (m *VKMessenger) getWallAuthor(wall *object.WallWallpost) string {
-	userResponce, err := m.vk.GroupsGetByID(api.Params{"user_ids": wall.FromID})
-	if err != nil {
-		log.Print("could not find community with id ", wall.FromID)
-		return ""
+	name := ""
+	if wall.FromID > 0 { // user
+		userResponse, err := m.vk.UsersGet(api.Params{"user_ids": wall.FromID})
+		if err != nil || len(userResponse) == 0 {
+			log.Print("could not find user with id ", wall.FromID)
+			return ""
+		}
+		name = userResponse[0].FirstName + " " + userResponse[0].LastName
+	} else { // group
+		groupResponse, err := m.vk.GroupsGetByID(api.Params{"group_ids": -wall.FromID})
+		if err != nil || len(groupResponse) == 0 {
+			log.Print("could not find community with id ", -wall.FromID)
+			return ""
+		}
+		name = groupResponse[0].Name
 	}
-	return concatenateMessageSender(userResponce[0].Name, "vk")
+
+	return concatenateMessageSender(name, "vk")
 }
 
 func (m *VKMessenger) processWall(wall object.WallWallpost, chat *Chat) {
