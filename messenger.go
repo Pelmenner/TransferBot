@@ -138,49 +138,81 @@ func (m *VKMessenger) SendMessage(message Message, chat *Chat) bool {
 	return true
 }
 
-func (m *TGMessenger) SendMessage(message Message, chat *Chat) bool {
-	text := message.Sender + "\n" + message.Text
-	msg := tgbotapi.NewMessage(chat.ID, text)
-	if len(message.Attachments) > 0 {
-		var media []interface{}
-		for i, attachment := range message.Attachments {
-			caption := ""
-			if i == 0 {
-				caption = text
-			}
+type Requirement int
 
-			fileType := ""
-			if attachment.Type == "photo" {
-				fileType = "photo"
-			} else if attachment.Type == "doc" {
-				fileType = "document"
-			}
+const (
+	ReqAlways Requirement = iota
+	ReqOptional
+	ReqNo
+)
 
-			baseInputMedia := tgbotapi.BaseInputMedia{
-				Type:    fileType,
+// Sends all attahchments of given type in a message;
+//  Sends text from provided message only if sendText is Always
+//  or sendText is optional and there message is already not empty
+// Returns result (success) of sending and a value showing need to do it (was message not empty?)
+func (m *TGMessenger) sendSpecialAttachmentType(message Message, chat *Chat, attachmentType,
+	attachmentFullType string, sendText Requirement) (success bool, needToSend bool) {
+	text := ""
+	if sendText != ReqNo {
+		text = message.Sender + "\n" + message.Text
+	}
+
+	needToSend = sendText == ReqAlways
+	var media []interface{}
+	for _, attachment := range message.Attachments {
+		if attachment.Type != attachmentType {
+			continue
+		}
+
+		caption := ""
+		if len(media) == 0 {
+			caption = text
+			needToSend = true
+		}
+
+		media = append(media, tgbotapi.InputMediaDocument{
+			BaseInputMedia: tgbotapi.BaseInputMedia{
+				Type:    attachmentFullType,
 				Media:   tgbotapi.FilePath(attachment.URL),
 				Caption: caption,
-			}
+			}})
+	}
 
-			if attachment.Type == "photo" {
-				media = append(media, tgbotapi.InputMediaPhoto{BaseInputMedia: baseInputMedia})
-			} else if attachment.Type == "doc" {
-				media = append(media, tgbotapi.InputMediaDocument{BaseInputMedia: baseInputMedia})
-			}
-		}
-		mediaGroup := tgbotapi.NewMediaGroup(chat.ID, media)
-		_, err := m.tg.SendMediaGroup(mediaGroup)
+	success = true
+	if !needToSend {
+		return
+	}
+
+	if len(media) == 0 {
+		_, err := m.tg.Send(tgbotapi.NewMessage(chat.ID, text))
 		if err != nil {
-			log.Print("could not add tg attachment:", err)
+			log.Print("could not send tg message:", err)
+			success = false
 		}
-		return err == nil
+		return
 	}
 
-	_, err := m.tg.Send(msg)
+	mediaGroup := tgbotapi.NewMediaGroup(chat.ID, media)
+	_, err := m.tg.SendMediaGroup(mediaGroup)
 	if err != nil {
-		log.Print("could not send tg message:", err)
+		log.Print("could not add tg ", attachmentFullType, err)
+		success = false
 	}
-	return err == nil
+	return
+}
+
+func (m *TGMessenger) SendMessage(message Message, chat *Chat) bool {
+	success, tried := m.sendSpecialAttachmentType(message, chat, "photo", "photo", ReqOptional)
+	if !success {
+		return false
+	}
+	requirement := ReqAlways
+	if tried {
+		requirement = ReqNo
+	}
+
+	success, tried = m.sendSpecialAttachmentType(message, chat, "doc", "document", requirement)
+	return success
 }
 
 func (m *TGMessenger) ProcessMediaGroup(message *tgbotapi.Message, chat *Chat) {
