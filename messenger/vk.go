@@ -1,7 +1,9 @@
 package messenger
 
 import (
+	"Pelmenner/TransferBot/config"
 	"Pelmenner/TransferBot/utils"
+	"net/http"
 
 	"context"
 	"fmt"
@@ -12,8 +14,8 @@ import (
 
 	"github.com/SevereCloud/vksdk/v2/api"
 	"github.com/SevereCloud/vksdk/v2/api/params"
+	"github.com/SevereCloud/vksdk/v2/callback"
 	"github.com/SevereCloud/vksdk/v2/events"
-	"github.com/SevereCloud/vksdk/v2/longpoll-bot"
 	"github.com/SevereCloud/vksdk/v2/object"
 
 	. "Pelmenner/TransferBot/orm"
@@ -22,29 +24,69 @@ import (
 type VKMessenger struct {
 	BaseMessenger
 	vk       *api.VK
-	longPoll *longpoll.LongPoll
+	callback *callback.Callback
 }
 
 func NewVKMessenger(baseMessenger BaseMessenger) *VKMessenger {
+	// ------------------
 	token := os.Getenv("VK_TOKEN")
 	vk := api.NewVK(token)
-	group, err := vk.GroupsGetByID(nil)
-	if err != nil {
-		log.Fatal(err)
-	}
+	// group, err := vk.GroupsGetByID(nil)
+	// if err != nil {
+	// 	log.Fatal(err)
+	// }
 
-	lp, err := longpoll.NewLongPoll(vk, group[0].ID)
-	if err != nil {
-		log.Fatal(err)
-	}
+	// lp, err := longpoll.NewLongPoll(vk, group[0].ID)
+	// if err != nil {
+	// 	log.Fatal(err)
+	// }
 
+	cb := callback.NewCallback()
+	cb.Title = "TransferBot"
 	messenger := &VKMessenger{
 		BaseMessenger: baseMessenger,
 		vk:            vk,
-		longPoll:      lp,
+		callback:      cb,
 	}
 
-	lp.MessageNew(func(_ context.Context, obj events.MessageNewObject) {
+	// lp.MessageNew(func(_ context.Context, obj events.MessageNewObject) {
+	// 	id := obj.Message.PeerID
+	// 	chat := messenger.GetChatById(int64(id), "vk")
+	// 	if chat == nil {
+	// 		chat = baseMessenger.CreateNewChat(int64(id), "vk")
+	// 	}
+	// 	messenger.ProcessMessage(obj.Message, chat)
+	// })
+
+	//---------------------------
+
+	// cb := callback.NewCallback()
+
+	// cb.ConfirmationKey = os.Getenv("VK_CONFIRMATION_KEY")
+	// // cb.ConfirmationKeys[170561776] = "693d0ba9"
+
+	// // cb.MessageNew(func(ctx context.Context, obj events.MessageNewObject) {
+	// // 	log.Print(obj.Message.Text)
+	// // })
+	// cb.MessageNew(func(ctx context.Context, obj events.MessageNewObject) {
+	// 	id := obj.Message.PeerID
+	// 	chat := messenger.GetChatById(int64(id), "vk")
+	// 	if chat == nil {
+	// 		chat = baseMessenger.CreateNewChat(int64(id), "vk")
+	// 	}
+	// 	messenger.ProcessMessage(obj.Message, chat)
+	// })
+
+	// http.HandleFunc("/callback", cb.HandleFunc)
+
+	// http.ListenAndServe(":8080", nil)
+
+	//--------------------
+
+	// token := os.Getenv("VK_TOKEN")
+	// vk := api.NewVK(token)
+
+	cb.MessageNew(func(ctx context.Context, obj events.MessageNewObject) {
 		id := obj.Message.PeerID
 		chat := messenger.GetChatById(int64(id), "vk")
 		if chat == nil {
@@ -52,6 +94,8 @@ func NewVKMessenger(baseMessenger BaseMessenger) *VKMessenger {
 		}
 		messenger.ProcessMessage(obj.Message, chat)
 	})
+
+	http.HandleFunc("/callback", cb.HandleFunc)
 
 	return messenger
 }
@@ -219,5 +263,13 @@ func (m *VKMessenger) ProcessMessage(message object.MessagesMessage, chat *Chat)
 }
 
 func (m *VKMessenger) Run() {
-	m.longPoll.Run()
+	go func() {
+		err := m.callback.AutoSetting(m.vk, os.Getenv("SERVER_ADDRESS")+"/callback")
+		if err != nil {
+			log.Println(err)
+			os.Exit(1)
+		}
+	}()
+
+	http.ListenAndServe(fmt.Sprintf(":%d", config.VKCallbackPort), nil)
 }
