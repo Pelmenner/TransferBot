@@ -12,6 +12,9 @@ RUN apk add sqlite gcc musl-dev
 
 COPY *.go ./
 COPY config/*.go ./config/
+COPY messenger/*.go ./messenger/
+COPY utils/*.go ./utils/
+COPY orm/*.go ./orm/
 COPY db_init.sql ./
 RUN mkdir data
 RUN sqlite3 data/db.sqlite3 < db_init.sql
