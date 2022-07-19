@@ -2,6 +2,8 @@ package main
 
 import (
 	"Pelmenner/TransferBot/config"
+	"Pelmenner/TransferBot/messenger"
+	"Pelmenner/TransferBot/orm"
 	"database/sql"
 	"log"
 	"os"
@@ -9,7 +11,7 @@ import (
 	"time"
 )
 
-func deleteAttachment(attachment *Attachment) {
+func deleteAttachment(attachment *orm.Attachment) {
 	err := os.Remove(attachment.URL)
 	if err != nil {
 		log.Println("could not delete file", attachment.URL, err)
@@ -22,7 +24,7 @@ func deleteAttachment(attachment *Attachment) {
 
 func repeatedFileCleanup(db *sql.DB) {
 	for {
-		attachments := getUnusedAttachments(db)
+		attachments := orm.GetUnusedAttachments(db)
 		for _, attachment := range attachments {
 			deleteAttachment(attachment)
 		}
@@ -31,7 +33,7 @@ func repeatedFileCleanup(db *sql.DB) {
 }
 
 func main() {
-	messengers := make(map[string]Messenger)
+	messengers := make(map[string]messenger.Messenger)
 
 	db, err := sql.Open("sqlite3", "data/db.sqlite3")
 	if err != nil {
@@ -39,13 +41,13 @@ func main() {
 	}
 	defer db.Close()
 
-	messageCallback := func(message Message, chat *Chat) {
+	messageCallback := func(message orm.Message, chat *orm.Chat) {
 		log.Print("message:", message)
-		subscribed := findSubscribedChats(db, *chat)
+		subscribed := orm.FindSubscribedChats(db, *chat)
 		sentToAllSubscribers := true
 		for _, subscription := range subscribed {
 			if !messengers[subscription.Type].SendMessage(message, &subscription) {
-				addUnsentMessage(db, QueuedMessage{Message: message, Destination: subscription})
+				orm.AddUnsentMessage(db, orm.QueuedMessage{Message: message, Destination: subscription})
 				sentToAllSubscribers = false
 			}
 		}
@@ -56,40 +58,46 @@ func main() {
 		}
 	}
 
-	addSubscription := func(subscriber *Chat, subscriptionToken string) {
+	addSubscription := func(subscriber *orm.Chat, subscriptionToken string) {
 		log.Printf("subscribe %+v on chat with token %s", subscriber, subscriptionToken)
 		var statusMessage string
-		if subscribe(db, subscriber, subscriptionToken) {
+		if orm.Subscribe(db, subscriber, subscriptionToken) {
 			statusMessage = "successfully subscribed!"
 		} else {
 			statusMessage = "could not subscribe on chat with given token"
 		}
-		messengers[subscriber.Type].SendMessage(Message{Text: statusMessage}, subscriber)
+		messengers[subscriber.Type].SendMessage(orm.Message{Text: statusMessage}, subscriber)
 	}
 
-	cancelSubscription := func(subscriber *Chat, subscriptionToken string) {
+	cancelSubscription := func(subscriber *orm.Chat, subscriptionToken string) {
 		log.Printf("unsubscribe chat %+v from chat with token %s", subscriber, subscriptionToken)
 		var statusMessage string
-		if unsubscribe(db, subscriber, subscriptionToken) {
+		if orm.Unsubscribe(db, subscriber, subscriptionToken) {
 			statusMessage = "successfully unsubscribed!"
 		} else {
 			statusMessage = "could not unsubscribe from chat with given token"
 		}
-		messengers[subscriber.Type].SendMessage(Message{Text: statusMessage}, subscriber)
+		messengers[subscriber.Type].SendMessage(orm.Message{Text: statusMessage}, subscriber)
 	}
 
-	getChatById := func(id int64, messenger string) *Chat {
-		return getChat(db, id, messenger)
+	getChatById := func(id int64, messenger string) *orm.Chat {
+		return orm.GetChat(db, id, messenger)
 	}
 
-	createNewChat := func(id int64, messenger string) *Chat {
-		return addChat(db, id, messenger)
+	createNewChat := func(id int64, messenger string) *orm.Chat {
+		return orm.AddChat(db, id, messenger)
 	}
 
-	baseMessenger := BaseMessenger{messageCallback, addSubscription, cancelSubscription, getChatById, createNewChat}
+	baseMessenger := messenger.BaseMessenger{
+		MessageCallback:     messageCallback,
+		SubscribeCallback:   addSubscription,
+		UnsubscribeCallback: cancelSubscription,
+		GetChatById:         getChatById,
+		CreateNewChat:       createNewChat,
+	}
 
-	VKMessenger := NewVKMessenger(baseMessenger)
-	TGMessenger := NewTGMessenger(baseMessenger)
+	VKMessenger := messenger.NewVKMessenger(baseMessenger)
+	TGMessenger := messenger.NewTGMessenger(baseMessenger)
 
 	messengers["vk"] = VKMessenger
 	messengers["tg"] = TGMessenger

@@ -1,4 +1,4 @@
-package main
+package utils
 
 import (
 	"io"
@@ -34,6 +34,6 @@ func DownloadFile(filePath string, url string) error {
 	return err
 }
 
-func concatenateMessageSender(user, chat string) string {
+func ConcatenateMessageSender(user, chat string) string {
 	return user + "/" + chat
 }
