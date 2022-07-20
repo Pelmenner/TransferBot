@@ -1,4 +1,4 @@
-package main
+package orm
 
 import (
 	"Pelmenner/TransferBot/config"
@@ -37,7 +37,7 @@ type QueuedMessage struct {
 	Destination Chat
 }
 
-func Transact(db *sql.DB, txOpts *sql.TxOptions, txFunc func(*sql.Tx) error) (err error) {
+func transact(db *sql.DB, txOpts *sql.TxOptions, txFunc func(*sql.Tx) error) (err error) {
 	tx, err := db.BeginTx(context.TODO(), txOpts)
 	if err != nil {
 		return err
@@ -59,7 +59,7 @@ func Transact(db *sql.DB, txOpts *sql.TxOptions, txFunc func(*sql.Tx) error) (er
 }
 
 // findSubscribedChats returns all chats subscribed on the given one
-func findSubscribedChats(db *sql.DB, chat Chat) []Chat {
+func FindSubscribedChats(db *sql.DB, chat Chat) []Chat {
 	rows, err := db.Query(`SELECT chat_id, token, chat_type, Chats.rowid
 	FROM Subscriptions JOIN Chats ON Subscriptions.destination_chat = Chats.rowid
 	WHERE source_chat = $1`, chat.RowID)
@@ -91,7 +91,7 @@ func generateToken(chatID int64, chatType string) string {
 }
 
 // addChat creates new chat entry with given id in messenger and type
-func addChat(db *sql.DB, chatID int64, chatType string) *Chat {
+func AddChat(db *sql.DB, chatID int64, chatType string) *Chat {
 	token := generateToken(chatID, chatType)
 
 	res, err := db.Exec("INSERT INTO Chats VALUES ($1, $2, $3)",
@@ -116,7 +116,7 @@ func addChat(db *sql.DB, chatID int64, chatType string) *Chat {
 
 // getChat returns chat object with given id in messenger
 // if an error occured, returns nil and logs error
-func getChat(db *sql.DB, chatID int64, chatType string) *Chat {
+func GetChat(db *sql.DB, chatID int64, chatType string) *Chat {
 	res := Chat{ID: chatID, Type: chatType}
 	row := db.QueryRow(`SELECT token, rowid FROM Chats
 	WHERE chat_id = $1 AND chat_type = $2`, &chatID, &chatType)
@@ -133,8 +133,8 @@ func getChat(db *sql.DB, chatID int64, chatType string) *Chat {
 }
 
 // addUnsentMessage adds message to send later
-func addUnsentMessage(db *sql.DB, message QueuedMessage) bool {
-	err := Transact(db, &sql.TxOptions{
+func AddUnsentMessage(db *sql.DB, message QueuedMessage) bool {
+	err := transact(db, &sql.TxOptions{
 		Isolation: sql.LevelSerializable,
 		ReadOnly:  false,
 	},
@@ -193,9 +193,9 @@ func getMessageAttachments(tx *sql.Tx, messageRowID int, attachments []*Attachme
 }
 
 // getUnsentMessages returns all messages to send and deletes them from db
-func getUnsentMessages(db *sql.DB, maxCnt int) []QueuedMessage {
+func GetUnsentMessages(db *sql.DB, maxCnt int) []QueuedMessage {
 	res := []QueuedMessage{}
-	err := Transact(db, &sql.TxOptions{
+	err := transact(db, &sql.TxOptions{
 		Isolation: sql.LevelSerializable,
 		ReadOnly:  false,
 	},
@@ -258,8 +258,8 @@ func getChatRowIDByToken(tx *sql.Tx, token string) (int, error) {
 
 // Subscribes proveded chat on another with given token.
 //  Returns true on success
-func subscribe(db *sql.DB, subscriber *Chat, subscriptionToken string) bool {
-	err := Transact(db, &sql.TxOptions{
+func Subscribe(db *sql.DB, subscriber *Chat, subscriptionToken string) bool {
+	err := transact(db, &sql.TxOptions{
 		Isolation: sql.LevelSerializable,
 		ReadOnly:  false,
 	},
@@ -287,8 +287,8 @@ func subscribe(db *sql.DB, subscriber *Chat, subscriptionToken string) bool {
 
 // Unsubscribes provided chat from another with given token.
 //  Returns true on success
-func unsubscribe(db *sql.DB, subscriber *Chat, subscriptionToken string) bool {
-	err := Transact(db, &sql.TxOptions{
+func Unsubscribe(db *sql.DB, subscriber *Chat, subscriptionToken string) bool {
+	err := transact(db, &sql.TxOptions{
 		Isolation: sql.LevelSerializable,
 		ReadOnly:  false,
 	},
@@ -324,9 +324,9 @@ func unsubscribe(db *sql.DB, subscriber *Chat, subscriptionToken string) bool {
 }
 
 // getUnusedAttachments returns all attachments which will be never sent anymore and deletes them
-func getUnusedAttachments(db *sql.DB) []*Attachment {
+func GetUnusedAttachments(db *sql.DB) []*Attachment {
 	res := []*Attachment{}
-	err := Transact(db, &sql.TxOptions{
+	err := transact(db, &sql.TxOptions{
 		Isolation: sql.LevelSerializable,
 		ReadOnly:  false,
 	},
