@@ -1,3 +1,4 @@
+-- +goose Up
 CREATE TABLE IF NOT EXISTS Chats (
     chat_id INTEGER NOT NULL,
     chat_type TEXT NOT NULL,
@@ -26,3 +27,9 @@ CREATE TABLE IF NOT EXISTS Attachments (
     parent_message INTEGER,
     FOREIGN KEY (parent_message) REFERENCES Messages(rowid)
 );
+
+-- +goose Down
+DROP TABLE IF EXISTS Attachments;
+DROP TABLE IF EXISTS Messages;
+DROP TABLE IF EXISTS Subscriptions;
+DROP TABLE IF EXISTS Chats;
