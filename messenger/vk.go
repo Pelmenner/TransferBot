@@ -189,7 +189,23 @@ func (m *VKMessenger) processDocument(document object.DocsDoc, chatID int64, att
 	return attachments
 }
 
+// Returns not cropped message requesting it by id (extracted from given message)
+func (m *VKMessenger) getFullMessage(message object.MessagesMessage) object.MessagesMessage {
+	messageResponse, err := m.vk.MessagesGetByConversationMessageID(api.Params{
+		"conversation_message_ids": message.ConversationMessageID,
+		"peer_id":                  message.PeerID,
+	})
+	if err != nil || messageResponse.Count == 0 {
+		log.Print("could not get vk message by conversation id ", err)
+		return message
+	}
+	return messageResponse.Items[0]
+}
+
 func (m *VKMessenger) ProcessMessage(message object.MessagesMessage, chat *Chat) {
+	if message.IsCropped {
+		message = m.getFullMessage(message)
+	}
 	if m.ProcessCommand(message, chat) {
 		return
 	}
