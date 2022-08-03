@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync"
 	"time"
 
@@ -15,10 +16,15 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
+type IndexedAttachment struct {
+	Attachment Attachment
+	ID         int
+}
+
 type TGMessenger struct {
 	BaseMessenger
 	tg                 *tgbotapi.BotAPI
-	mediaGroups        utils.SafeMap[string, chan Attachment]
+	mediaGroups        utils.SafeMap[string, chan IndexedAttachment]
 	mediaGroupLoadings utils.SafeMap[string, *sync.WaitGroup]
 }
 
@@ -31,7 +37,7 @@ func NewTGMessenger(baseMessenger BaseMessenger) *TGMessenger {
 	return &TGMessenger{
 		BaseMessenger:      baseMessenger,
 		tg:                 bot,
-		mediaGroups:        utils.NewSafeMap[string, chan Attachment](),
+		mediaGroups:        utils.NewSafeMap[string, chan IndexedAttachment](),
 		mediaGroupLoadings: utils.NewSafeMap[string, *sync.WaitGroup](),
 	}
 }
@@ -124,7 +130,7 @@ func (m *TGMessenger) ProcessMediaGroup(message *tgbotapi.Message, chat *Chat) {
 		loadingWaiter.Wait()
 		close(mediaGroup)
 	}()
-	
+
 	mediaGroup := m.mediaGroups.Get(mediaGroupID)
 
 	standardMessage := Message{
@@ -132,9 +138,16 @@ func (m *TGMessenger) ProcessMediaGroup(message *tgbotapi.Message, chat *Chat) {
 		Sender:      getTGSenderName(message),
 		Attachments: []*Attachment{},
 	}
+	indexedAttachments := []IndexedAttachment{}
 	for attachment := range mediaGroup {
-		newAttachment := attachment
-		standardMessage.Attachments = append(standardMessage.Attachments, &newAttachment)
+		indexedAttachments = append(indexedAttachments, attachment)
+	}
+	sort.SliceStable(indexedAttachments, func(i, j int) bool {
+		return indexedAttachments[i].ID < indexedAttachments[j].ID
+	})
+	for _, indexedAttachment := range indexedAttachments {
+		attachment := indexedAttachment.Attachment
+		standardMessage.Attachments = append(standardMessage.Attachments, &attachment)
 	}
 	m.MessageCallback(standardMessage, chat)
 	m.mediaGroups.Delete(mediaGroupID)
@@ -173,7 +186,7 @@ func (m *TGMessenger) addAttachment(attachments []*Attachment, fileID, fileName,
 	return attachments
 }
 
-func (m *TGMessenger) addMediaGroupAttachment(fileID, fileName, fileType, mediaGroupID string) {
+func (m *TGMessenger) addMediaGroupAttachment(fileID, fileName, fileType, mediaGroupID string, messageID int) {
 	m.mediaGroupLoadings.Get(mediaGroupID).Add(1)
 
 	url := m.saveTelegramFile(tgbotapi.FileConfig{FileID: fileID}, fileName)
@@ -182,7 +195,10 @@ func (m *TGMessenger) addMediaGroupAttachment(fileID, fileName, fileType, mediaG
 		return
 	}
 
-	m.mediaGroups.Get(mediaGroupID) <- Attachment{Type: fileType, URL: url}
+	m.mediaGroups.Get(mediaGroupID) <- IndexedAttachment{
+		Attachment: Attachment{Type: fileType, URL: url},
+		ID:         messageID,
+	}
 	m.mediaGroupLoadings.Get(mediaGroupID).Done()
 }
 
@@ -218,17 +234,19 @@ func (m *TGMessenger) ProcessMessage(message *tgbotapi.Message, chat *Chat) {
 		m.MessageCallback(standardMessage, chat)
 	} else {
 		if !m.mediaGroups.Contains(message.MediaGroupID) {
-			m.mediaGroups.Set(message.MediaGroupID, make(chan Attachment))
+			m.mediaGroups.Set(message.MediaGroupID, make(chan IndexedAttachment))
 			m.mediaGroupLoadings.Set(message.MediaGroupID, &sync.WaitGroup{}) // TODO: add buffer size
 			// media group is splitted into different messages, we need to catch them all before processing it
 			go m.ProcessMediaGroup(message, chat)
 		}
 
 		if message.Photo != nil {
-			m.addMediaGroupAttachment(message.Photo[len(message.Photo)-1].FileID, "", "photo", message.MediaGroupID)
+			m.addMediaGroupAttachment(message.Photo[len(message.Photo)-1].FileID, "",
+				"photo", message.MediaGroupID, message.MessageID)
 		}
 		if message.Document != nil {
-			m.addMediaGroupAttachment(message.Document.FileID, message.Document.FileName, "doc", message.MediaGroupID)
+			m.addMediaGroupAttachment(message.Document.FileID, message.Document.FileName,
+				"doc", message.MediaGroupID, message.MessageID)
 		}
 	}
 }
