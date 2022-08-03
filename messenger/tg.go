@@ -18,9 +18,8 @@ import (
 type TGMessenger struct {
 	BaseMessenger
 	tg                 *tgbotapi.BotAPI
-	mediaGroups        map[string][]*Attachment
-	mediaGroupMutex    sync.Mutex
-	mediaGroupLoadings map[string]*sync.WaitGroup
+	mediaGroups        utils.SafeMap[string, chan Attachment]
+	mediaGroupLoadings utils.SafeMap[string, *sync.WaitGroup]
 }
 
 func NewTGMessenger(baseMessenger BaseMessenger) *TGMessenger {
@@ -32,8 +31,8 @@ func NewTGMessenger(baseMessenger BaseMessenger) *TGMessenger {
 	return &TGMessenger{
 		BaseMessenger:      baseMessenger,
 		tg:                 bot,
-		mediaGroups:        make(map[string][]*Attachment),
-		mediaGroupLoadings: make(map[string]*sync.WaitGroup),
+		mediaGroups:        utils.NewSafeMap[string, chan Attachment](),
+		mediaGroupLoadings: utils.NewSafeMap[string, *sync.WaitGroup](),
 	}
 }
 
@@ -117,25 +116,29 @@ func (m *TGMessenger) SendMessage(message Message, chat *Chat) bool {
 func (m *TGMessenger) ProcessMediaGroup(message *tgbotapi.Message, chat *Chat) {
 	// wait for all media in a group to be received and processed (in another goroutine)
 	// we don't know when it ends, so just wait fixed time
-	time.Sleep(config.MediaGroupWaitTimeSec * time.Second)
-	m.mediaGroupMutex.Lock()
-	loadingWaiter := m.mediaGroupLoadings[message.MediaGroupID]
-	m.mediaGroupMutex.Unlock()
-	loadingWaiter.Wait()
-	m.mediaGroupMutex.Lock()
-	defer m.mediaGroupMutex.Unlock()
+	mediaGroupID := message.MediaGroupID
+	go func() {
+		time.Sleep(config.MediaGroupWaitTimeSec * time.Second)
+		loadingWaiter := m.mediaGroupLoadings.Get(mediaGroupID)
+		mediaGroup := m.mediaGroups.Get(mediaGroupID)
+		loadingWaiter.Wait()
+		close(mediaGroup)
+	}()
+	
+	mediaGroup := m.mediaGroups.Get(mediaGroupID)
 
 	standardMessage := Message{
 		Text:        message.Text + message.Caption,
 		Sender:      getTGSenderName(message),
 		Attachments: []*Attachment{},
 	}
-	for _, attachment := range m.mediaGroups[message.MediaGroupID] {
-		standardMessage.Attachments = append(standardMessage.Attachments, attachment)
+	for attachment := range mediaGroup {
+		newAttachment := attachment
+		standardMessage.Attachments = append(standardMessage.Attachments, &newAttachment)
 	}
 	m.MessageCallback(standardMessage, chat)
-	delete(m.mediaGroups, message.MediaGroupID)
-	delete(m.mediaGroupLoadings, message.MediaGroupID)
+	m.mediaGroups.Delete(mediaGroupID)
+	m.mediaGroupLoadings.Delete(mediaGroupID)
 }
 
 // returns path to saved file
@@ -171,23 +174,16 @@ func (m *TGMessenger) addAttachment(attachments []*Attachment, fileID, fileName,
 }
 
 func (m *TGMessenger) addMediaGroupAttachment(fileID, fileName, fileType, mediaGroupID string) {
-	m.mediaGroupMutex.Lock()
-	if _, exists := m.mediaGroupLoadings[mediaGroupID]; !exists {
-		m.mediaGroupLoadings[mediaGroupID] = &sync.WaitGroup{}
-	}
-	m.mediaGroupLoadings[mediaGroupID].Add(1)
-	m.mediaGroupMutex.Unlock()
+	m.mediaGroupLoadings.Get(mediaGroupID).Add(1)
 
 	url := m.saveTelegramFile(tgbotapi.FileConfig{FileID: fileID}, fileName)
 	if url == "" {
+		m.mediaGroupLoadings.Get(mediaGroupID).Done()
 		return
 	}
 
-	m.mediaGroupMutex.Lock()
-	m.mediaGroups[mediaGroupID] = append(m.mediaGroups[mediaGroupID],
-		&Attachment{Type: fileType, URL: url})
-	m.mediaGroupLoadings[mediaGroupID].Done()
-	m.mediaGroupMutex.Unlock()
+	m.mediaGroups.Get(mediaGroupID) <- Attachment{Type: fileType, URL: url}
+	m.mediaGroupLoadings.Get(mediaGroupID).Done()
 }
 
 func getTGSenderName(message *tgbotapi.Message) string {
@@ -221,11 +217,9 @@ func (m *TGMessenger) ProcessMessage(message *tgbotapi.Message, chat *Chat) {
 		}
 		m.MessageCallback(standardMessage, chat)
 	} else {
-		_, exists := m.mediaGroups[message.MediaGroupID]
-		if !exists {
-			m.mediaGroupMutex.Lock()
-			m.mediaGroups[message.MediaGroupID] = make([]*Attachment, 0)
-			m.mediaGroupMutex.Unlock()
+		if !m.mediaGroups.Contains(message.MediaGroupID) {
+			m.mediaGroups.Set(message.MediaGroupID, make(chan Attachment))
+			m.mediaGroupLoadings.Set(message.MediaGroupID, &sync.WaitGroup{}) // TODO: add buffer size
 			// media group is splitted into different messages, we need to catch them all before processing it
 			go m.ProcessMediaGroup(message, chat)
 		}
