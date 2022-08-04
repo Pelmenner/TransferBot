@@ -40,38 +40,38 @@ func ConcatenateMessageSender(user, chat string) string {
 }
 
 // thread-safe typed map wrapper
-type SafeMap[K comparable, V any] struct {
+type Map[K comparable, V any] struct {
 	mx sync.RWMutex
-	m  map[K]V
+	mp map[K]V
 }
 
-func NewSafeMap[K comparable, V any]() SafeMap[K, V] {
-	return SafeMap[K, V]{
-		m: make(map[K]V),
+func NewMap[K comparable, V any]() Map[K, V] {
+	return Map[K, V]{
+		mp: make(map[K]V),
 	}
 }
 
-func (tm *SafeMap[K, V]) Get(key K) V {
-	tm.mx.RLock()
-	defer tm.mx.RUnlock()
-	return tm.m[key]
+func (m *Map[K, V]) Get(key K) V {
+	m.mx.RLock()
+	defer m.mx.RUnlock()
+	return m.mp[key]
 }
 
-func (tm *SafeMap[K, V]) Set(key K, value V) {
-	tm.mx.Lock()
-	defer tm.mx.Unlock()
-	tm.m[key] = value
+func (m *Map[K, V]) Set(key K, value V) {
+	m.mx.Lock()
+	defer m.mx.Unlock()
+	m.mp[key] = value
 }
 
-func (tm *SafeMap[K, V]) Delete(key K) {
-	tm.mx.Lock()
-	defer tm.mx.Unlock()
-	delete(tm.m, key)
+func (m *Map[K, V]) Delete(key K) {
+	m.mx.Lock()
+	defer m.mx.Unlock()
+	delete(m.mp, key)
 }
 
-func (tm *SafeMap[K, V]) Contains(key K) bool {
-	tm.mx.RLock()
-	defer tm.mx.RUnlock()
-	_, exists := tm.m[key]
+func (m *Map[K, V]) Contains(key K) bool {
+	m.mx.RLock()
+	defer m.mx.RUnlock()
+	_, exists := m.mp[key]
 	return exists
 }

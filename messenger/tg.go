@@ -24,8 +24,8 @@ type IndexedAttachment struct {
 type TGMessenger struct {
 	BaseMessenger
 	tg                 *tgbotapi.BotAPI
-	mediaGroups        utils.SafeMap[string, chan IndexedAttachment]
-	mediaGroupLoadings utils.SafeMap[string, *sync.WaitGroup]
+	mediaGroups        utils.Map[string, chan IndexedAttachment]
+	mediaGroupLoadings utils.Map[string, *sync.WaitGroup]
 }
 
 func NewTGMessenger(baseMessenger BaseMessenger) *TGMessenger {
@@ -37,8 +37,8 @@ func NewTGMessenger(baseMessenger BaseMessenger) *TGMessenger {
 	return &TGMessenger{
 		BaseMessenger:      baseMessenger,
 		tg:                 bot,
-		mediaGroups:        utils.NewSafeMap[string, chan IndexedAttachment](),
-		mediaGroupLoadings: utils.NewSafeMap[string, *sync.WaitGroup](),
+		mediaGroups:        utils.NewMap[string, chan IndexedAttachment](),
+		mediaGroupLoadings: utils.NewMap[string, *sync.WaitGroup](),
 	}
 }
 
