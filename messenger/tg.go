@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync"
 	"time"
 
@@ -15,12 +16,16 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
+type IndexedAttachment struct {
+	Attachment
+	ID int
+}
+
 type TGMessenger struct {
 	BaseMessenger
 	tg                 *tgbotapi.BotAPI
-	mediaGroups        map[string][]*Attachment
-	mediaGroupMutex    sync.Mutex
-	mediaGroupLoadings map[string]*sync.WaitGroup
+	mediaGroups        utils.Map[string, chan IndexedAttachment]
+	mediaGroupLoadings utils.Map[string, *sync.WaitGroup]
 }
 
 func NewTGMessenger(baseMessenger BaseMessenger) *TGMessenger {
@@ -32,9 +37,31 @@ func NewTGMessenger(baseMessenger BaseMessenger) *TGMessenger {
 	return &TGMessenger{
 		BaseMessenger:      baseMessenger,
 		tg:                 bot,
-		mediaGroups:        make(map[string][]*Attachment),
-		mediaGroupLoadings: make(map[string]*sync.WaitGroup),
+		mediaGroups:        utils.NewMap[string, chan IndexedAttachment](),
+		mediaGroupLoadings: utils.NewMap[string, *sync.WaitGroup](),
 	}
+}
+
+// Creates tg media attachments for all message's attachments of given type
+func getPreparedMediaList(message *Message, attachmentFullType, attachmentType, caption string) []interface{} {
+	var media []interface{}
+	for _, attachment := range message.Attachments {
+		if attachment.Type != attachmentType {
+			continue
+		}
+		curCaption := ""
+		if len(media) == 0 {
+			curCaption = caption
+		}
+		media = append(media, tgbotapi.InputMediaDocument{
+			BaseInputMedia: tgbotapi.BaseInputMedia{
+				Type:    attachmentFullType,
+				Media:   tgbotapi.FilePath(attachment.URL),
+				Caption: curCaption,
+			},
+		})
+	}
+	return media
 }
 
 type Requirement int
@@ -42,7 +69,7 @@ type Requirement int
 const (
 	ReqAlways Requirement = iota
 	ReqOptional
-	ReqNo
+	ReqNever
 )
 
 // Sends all attahchments of given type in a message;
@@ -52,52 +79,29 @@ const (
 func (m *TGMessenger) sendSpecialAttachmentType(message Message, chat *Chat, attachmentType,
 	attachmentFullType string, sendText Requirement) (success bool, needToSend bool) {
 	text := ""
-	if sendText != ReqNo {
+	if sendText != ReqNever {
 		text = message.Sender + "\n" + message.Text
 	}
-
-	needToSend = sendText == ReqAlways
-	var media []interface{}
-	for _, attachment := range message.Attachments {
-		if attachment.Type != attachmentType {
-			continue
-		}
-
-		caption := ""
-		if len(media) == 0 {
-			caption = text
-			needToSend = true
-		}
-
-		media = append(media, tgbotapi.InputMediaDocument{
-			BaseInputMedia: tgbotapi.BaseInputMedia{
-				Type:    attachmentFullType,
-				Media:   tgbotapi.FilePath(attachment.URL),
-				Caption: caption,
-			}})
+	media := getPreparedMediaList(&message, attachmentFullType, attachmentType, text)
+	if len(media) == 0 || sendText == ReqAlways {
+		return true, false
 	}
-
 	success = true
-	if !needToSend {
-		return
-	}
-
 	if len(media) == 0 {
 		_, err := m.tg.Send(tgbotapi.NewMessage(chat.ID, text))
 		if err != nil {
 			log.Print("could not send tg message:", err)
 			success = false
 		}
-		return
+		return success, true
 	}
-
 	mediaGroup := tgbotapi.NewMediaGroup(chat.ID, media)
 	_, err := m.tg.SendMediaGroup(mediaGroup)
 	if err != nil {
 		log.Print("could not add tg ", attachmentFullType, err)
 		success = false
 	}
-	return
+	return success, true
 }
 
 func (m *TGMessenger) SendMessage(message Message, chat *Chat) bool {
@@ -107,7 +111,7 @@ func (m *TGMessenger) SendMessage(message Message, chat *Chat) bool {
 	}
 	requirement := ReqAlways
 	if tried {
-		requirement = ReqNo
+		requirement = ReqNever
 	}
 
 	success, tried = m.sendSpecialAttachmentType(message, chat, "doc", "document", requirement)
@@ -117,25 +121,36 @@ func (m *TGMessenger) SendMessage(message Message, chat *Chat) bool {
 func (m *TGMessenger) ProcessMediaGroup(message *tgbotapi.Message, chat *Chat) {
 	// wait for all media in a group to be received and processed (in another goroutine)
 	// we don't know when it ends, so just wait fixed time
-	time.Sleep(config.MediaGroupWaitTimeSec * time.Second)
-	m.mediaGroupMutex.Lock()
-	loadingWaiter := m.mediaGroupLoadings[message.MediaGroupID]
-	m.mediaGroupMutex.Unlock()
-	loadingWaiter.Wait()
-	m.mediaGroupMutex.Lock()
-	defer m.mediaGroupMutex.Unlock()
+	mediaGroupID := message.MediaGroupID
+	go func() {
+		time.Sleep(config.MediaGroupWaitTimeSec * time.Second)
+		loadingWaiter := m.mediaGroupLoadings.Get(mediaGroupID)
+		mediaGroup := m.mediaGroups.Get(mediaGroupID)
+		loadingWaiter.Wait()
+		close(mediaGroup)
+	}()
+
+	mediaGroup := m.mediaGroups.Get(mediaGroupID)
 
 	standardMessage := Message{
 		Text:        message.Text + message.Caption,
 		Sender:      getTGSenderName(message),
 		Attachments: []*Attachment{},
 	}
-	for _, attachment := range m.mediaGroups[message.MediaGroupID] {
-		standardMessage.Attachments = append(standardMessage.Attachments, attachment)
+	indexedAttachments := []IndexedAttachment{}
+	for attachment := range mediaGroup {
+		indexedAttachments = append(indexedAttachments, attachment)
+	}
+	sort.SliceStable(indexedAttachments, func(i, j int) bool {
+		return indexedAttachments[i].ID < indexedAttachments[j].ID
+	})
+	for _, indexedAttachment := range indexedAttachments {
+		attachment := indexedAttachment.Attachment
+		standardMessage.Attachments = append(standardMessage.Attachments, &attachment)
 	}
 	m.MessageCallback(standardMessage, chat)
-	delete(m.mediaGroups, message.MediaGroupID)
-	delete(m.mediaGroupLoadings, message.MediaGroupID)
+	m.mediaGroups.Delete(mediaGroupID)
+	m.mediaGroupLoadings.Delete(mediaGroupID)
 }
 
 // returns path to saved file
@@ -170,24 +185,20 @@ func (m *TGMessenger) addAttachment(attachments []*Attachment, fileID, fileName,
 	return attachments
 }
 
-func (m *TGMessenger) addMediaGroupAttachment(fileID, fileName, fileType, mediaGroupID string) {
-	m.mediaGroupMutex.Lock()
-	if _, exists := m.mediaGroupLoadings[mediaGroupID]; !exists {
-		m.mediaGroupLoadings[mediaGroupID] = &sync.WaitGroup{}
-	}
-	m.mediaGroupLoadings[mediaGroupID].Add(1)
-	m.mediaGroupMutex.Unlock()
+func (m *TGMessenger) addMediaGroupAttachment(fileID, fileName, fileType, mediaGroupID string, messageID int) {
+	m.mediaGroupLoadings.Get(mediaGroupID).Add(1)
 
 	url := m.saveTelegramFile(tgbotapi.FileConfig{FileID: fileID}, fileName)
 	if url == "" {
+		m.mediaGroupLoadings.Get(mediaGroupID).Done()
 		return
 	}
 
-	m.mediaGroupMutex.Lock()
-	m.mediaGroups[mediaGroupID] = append(m.mediaGroups[mediaGroupID],
-		&Attachment{Type: fileType, URL: url})
-	m.mediaGroupLoadings[mediaGroupID].Done()
-	m.mediaGroupMutex.Unlock()
+	m.mediaGroups.Get(mediaGroupID) <- IndexedAttachment{
+		Attachment: Attachment{Type: fileType, URL: url},
+		ID:         messageID,
+	}
+	m.mediaGroupLoadings.Get(mediaGroupID).Done()
 }
 
 func getTGSenderName(message *tgbotapi.Message) string {
@@ -201,45 +212,53 @@ func getTGSenderName(message *tgbotapi.Message) string {
 	return sender
 }
 
-func (m *TGMessenger) ProcessMessage(message *tgbotapi.Message, chat *Chat) {
-	if message.ReplyToMessage != nil {
-		m.ProcessMessage(message.ReplyToMessage, chat)
+func (m *TGMessenger) processSingleMessage(message *tgbotapi.Message, chat *Chat) {
+	standardMessage := Message{
+		Text:   message.Text + message.Caption,
+		Sender: getTGSenderName(message),
+	}
+	if message.Photo != nil {
+		standardMessage.Attachments = m.addAttachment(
+			standardMessage.Attachments, message.Photo[len(message.Photo)-1].FileID, "", "photo")
+	}
+	if message.Document != nil {
+		standardMessage.Attachments = m.addAttachment(
+			standardMessage.Attachments, message.Document.FileID, message.Document.FileName, "doc")
+	}
+	m.MessageCallback(standardMessage, chat)
+}
+
+func (m *TGMessenger) processPartOfGroupMessage(message *tgbotapi.Message, chat *Chat) {
+	if !m.mediaGroups.Contains(message.MediaGroupID) {
+		m.mediaGroups.Set(message.MediaGroupID, make(chan IndexedAttachment))
+		m.mediaGroupLoadings.Set(message.MediaGroupID, &sync.WaitGroup{})
+		// media group is splitted into different messages, we need to catch them all before processing it
+		go m.ProcessMediaGroup(message, chat)
 	}
 
-	if message.MediaGroupID == "" {
-		standardMessage := Message{
-			Text:   message.Text + message.Caption,
-			Sender: getTGSenderName(message),
-		}
-		if message.Photo != nil {
-			standardMessage.Attachments = m.addAttachment(
-				standardMessage.Attachments, message.Photo[len(message.Photo)-1].FileID, "", "photo")
-		}
-		if message.Document != nil {
-			standardMessage.Attachments = m.addAttachment(
-				standardMessage.Attachments, message.Document.FileID, message.Document.FileName, "doc")
-		}
-		m.MessageCallback(standardMessage, chat)
-	} else {
-		_, exists := m.mediaGroups[message.MediaGroupID]
-		if !exists {
-			m.mediaGroupMutex.Lock()
-			m.mediaGroups[message.MediaGroupID] = make([]*Attachment, 0)
-			m.mediaGroupMutex.Unlock()
-			// media group is splitted into different messages, we need to catch them all before processing it
-			go m.ProcessMediaGroup(message, chat)
-		}
-
-		if message.Photo != nil {
-			m.addMediaGroupAttachment(message.Photo[len(message.Photo)-1].FileID, "", "photo", message.MediaGroupID)
-		}
-		if message.Document != nil {
-			m.addMediaGroupAttachment(message.Document.FileID, message.Document.FileName, "doc", message.MediaGroupID)
-		}
+	if message.Photo != nil {
+		m.addMediaGroupAttachment(message.Photo[len(message.Photo)-1].FileID, "",
+			"photo", message.MediaGroupID, message.MessageID)
+	}
+	if message.Document != nil {
+		m.addMediaGroupAttachment(message.Document.FileID, message.Document.FileName,
+			"doc", message.MediaGroupID, message.MessageID)
 	}
 }
 
-func (m *TGMessenger) ProcessCommand(message *tgbotapi.Message, chat *Chat) {
+func (m *TGMessenger) processMessage(message *tgbotapi.Message, chat *Chat) {
+	if message.ReplyToMessage != nil {
+		m.processMessage(message.ReplyToMessage, chat)
+	}
+
+	if message.MediaGroupID == "" {
+		m.processSingleMessage(message, chat)
+	} else {
+		m.processPartOfGroupMessage(message, chat)
+	}
+}
+
+func (m *TGMessenger) processCommand(message *tgbotapi.Message, chat *Chat) {
 	switch message.Command() {
 	case "get_token":
 		msg := tgbotapi.NewMessage(message.Chat.ID, chat.Token)
@@ -268,10 +287,10 @@ func (m *TGMessenger) Run() {
 			}
 
 			if update.Message.IsCommand() {
-				go m.ProcessCommand(update.Message, chat)
+				go m.processCommand(update.Message, chat)
 			} else { // If we got a message
 				log.Printf("[%s] %s", update.Message.From.UserName, update.Message.Text)
-				go m.ProcessMessage(update.Message, chat)
+				go m.processMessage(update.Message, chat)
 			}
 		}
 		time.Sleep(config.TGSleepIntervalSec * time.Second)

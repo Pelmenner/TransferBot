@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sync"
 )
 
 func DownloadFile(filePath string, url string) error {
@@ -36,4 +37,41 @@ func DownloadFile(filePath string, url string) error {
 
 func ConcatenateMessageSender(user, chat string) string {
 	return user + "/" + chat
+}
+
+// thread-safe typed map wrapper
+type Map[K comparable, V any] struct {
+	mx sync.RWMutex
+	mp map[K]V
+}
+
+func NewMap[K comparable, V any]() Map[K, V] {
+	return Map[K, V]{
+		mp: make(map[K]V),
+	}
+}
+
+func (m *Map[K, V]) Get(key K) V {
+	m.mx.RLock()
+	defer m.mx.RUnlock()
+	return m.mp[key]
+}
+
+func (m *Map[K, V]) Set(key K, value V) {
+	m.mx.Lock()
+	defer m.mx.Unlock()
+	m.mp[key] = value
+}
+
+func (m *Map[K, V]) Delete(key K) {
+	m.mx.Lock()
+	defer m.mx.Unlock()
+	delete(m.mp, key)
+}
+
+func (m *Map[K, V]) Contains(key K) bool {
+	m.mx.RLock()
+	defer m.mx.RUnlock()
+	_, exists := m.mp[key]
+	return exists
 }
