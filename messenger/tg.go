@@ -17,8 +17,8 @@ import (
 )
 
 type IndexedAttachment struct {
-	Attachment Attachment
-	ID         int
+	Attachment
+	ID int
 }
 
 type TGMessenger struct {
