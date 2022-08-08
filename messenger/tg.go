@@ -83,7 +83,7 @@ func (m *TGMessenger) sendSpecialAttachmentType(message Message, chat *Chat, att
 		text = message.Sender + "\n" + message.Text
 	}
 	media := getPreparedMediaList(&message, attachmentFullType, attachmentType, text)
-	if len(media) == 0 || sendText == ReqAlways {
+	if len(media) == 0 && sendText != ReqAlways {
 		return true, false
 	}
 	success = true
