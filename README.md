@@ -1,5 +1,26 @@
 # TransferBot
 
+## Description
+
+A bot for transfering messages from one messenger to another.
+
+Supported attachment types: photos, wall posts, files up to 50 MB  
+Supported messengers: VK, Telegram
+
+![demo_image](images/transferbot_demo.webp)
+
+## Links
+
+- VK bot: [transfer_bot](https://vk.com/transfer_bot)
+- Telegram bot: [@content_transfer_bot](https://t.me/content_transfer_bot)
+
+## How to use
+
+- Add the bot (use the links above to find it) to the sender and receiver groups or start a private dialogue with it
+- Retrieve a token of the chat from which messages should be transfered by using `/get_token` command
+- Subscribe on the channel by using `/subscribe <token>` command in receiving chat
+- In case the subscription is no more needed, unsubscribe from a channel using `/unsubscribe <token>`
+
 ## Running in Docker container
 
 Bot stores some persistent files in `data` directory, hence you'd better mount this directory to some docker volume to update more easily. 
