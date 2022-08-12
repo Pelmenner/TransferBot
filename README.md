@@ -17,9 +17,9 @@ Supported messengers: VK, Telegram
 ## How to use
 
 - Add the bot (use the links above to find it) to the sender and receiver groups or start a private dialogue with it
-- Retrieve a token of the chat from which messages should be transfered by using <b><i>/get_token</i></b> command
-- Subscribe on the channel by using <b><i>/subscribe \<token\></i></b> command in receiving chat
-- In case the subscription is no more needed, unsubscribe from a channel using <b><i>/unsubscribe \<token\></i></b>
+- Retrieve a token of the chat from which messages should be transfered by using `/get_token` command
+- Subscribe on the channel by using `/subscribe <token>` command in receiving chat
+- In case the subscription is no more needed, unsubscribe from a channel using `/unsubscribe <token>`
 
 ## Running in Docker container
 
