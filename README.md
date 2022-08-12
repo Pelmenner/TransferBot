@@ -7,6 +7,8 @@ A bot for transfering messages from one messenger to another.
 Supported attachment types: photos, files, files up to 50 MB  
 Supported messengers: VK, Telegram
 
+![demo_image](images/transferbot_demo.webp)
+
 ## Links
 
 - VK bot: [transfer_bot](https://vk.com/transfer_bot)
