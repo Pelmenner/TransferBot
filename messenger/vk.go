@@ -224,11 +224,16 @@ func (m *VKMessenger) ProcessMessage(message object.MessagesMessage, chat *Chat)
 			standardMessage.Attachments = m.processDocument(attachment.Doc, chat.ID, standardMessage.Attachments)
 		}
 	}
+	if message.ReplyMessage != nil {
+		standardMessage.Text += "\nin reply to..."
+	}
 	m.MessageCallback(standardMessage, chat)
 	for _, wall := range walls {
 		m.processWall(*wall, chat)
 	}
-
+	if message.ReplyMessage != nil {
+		m.ProcessMessage(*message.ReplyMessage, chat)
+	}
 	for _, message := range message.FwdMessages {
 		m.ProcessMessage(message, chat)
 	}
