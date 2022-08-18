@@ -44,7 +44,10 @@ func NewVKMessenger(baseMessenger BaseMessenger) *VKMessenger {
 		longPoll:      lp,
 	}
 
-	lp.MessageNew(func(_ context.Context, obj events.MessageNewObject) {
+	lp.MessageNew(func(ctx context.Context, obj events.MessageNewObject) {
+		if obj.Message.Action.Type != "" {
+			return
+		}
 		id := obj.Message.PeerID
 		chat := messenger.GetChatById(int64(id), "vk")
 		if chat == nil {
