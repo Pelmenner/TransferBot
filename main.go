@@ -32,6 +32,19 @@ func repeatedFileCleanup(db *sql.DB) {
 	}
 }
 
+func repeatedProcessUnsentMessages(db *sql.DB, messengers map[string]messenger.Messenger) {
+	for {
+		messages := orm.GetUnsentMessages(db, config.UnsentRetrieveMaxCnt)
+		for _, queuedMessage := range messages {
+			destination := &queuedMessage.Destination
+			if !messengers[destination.Type].SendMessage(queuedMessage.Message, destination) {
+				orm.AddUnsentMessage(db, queuedMessage)
+			}
+		}
+		time.Sleep(time.Second * config.RetrySendIntervalSec)
+	}
+}
+
 func main() {
 	messengers := make(map[string]messenger.Messenger)
 
@@ -102,6 +115,7 @@ func main() {
 	messengers["vk"] = VKMessenger
 	messengers["tg"] = TGMessenger
 
+	go repeatedProcessUnsentMessages(db, messengers)
 	go repeatedFileCleanup(db)
 	go TGMessenger.Run()
 
