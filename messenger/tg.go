@@ -55,9 +55,10 @@ func getPreparedMediaList(message *Message, attachmentFullType, attachmentType, 
 		}
 		media = append(media, tgbotapi.InputMediaDocument{
 			BaseInputMedia: tgbotapi.BaseInputMedia{
-				Type:    attachmentFullType,
-				Media:   tgbotapi.FilePath(attachment.URL),
-				Caption: curCaption,
+				Type:      attachmentFullType,
+				Media:     tgbotapi.FilePath(attachment.URL),
+				Caption:   curCaption,
+				ParseMode: "HTML",
 			},
 		})
 	}
@@ -88,7 +89,9 @@ func (m *TGMessenger) sendSpecialAttachmentType(message Message, chat *Chat, att
 	}
 	success = true
 	if len(media) == 0 {
-		_, err := m.tg.Send(tgbotapi.NewMessage(chat.ID, text))
+		tgMessage := tgbotapi.NewMessage(chat.ID, text)
+		tgMessage.ParseMode = "HTML"
+		_, err := m.tg.Send(tgMessage)
 		if err != nil {
 			log.Print("could not send tg message:", err)
 			success = false
