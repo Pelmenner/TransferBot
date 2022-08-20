@@ -268,13 +268,15 @@ func (m *TGMessenger) processPartOfGroupMessage(message *tgbotapi.Message, chat 
 
 func (m *TGMessenger) processMessage(message *tgbotapi.Message, chat *Chat) {
 	if message.ReplyToMessage != nil {
-		m.processMessage(message.ReplyToMessage, chat)
+		message.Text += "\nin reply to..."
 	}
-
 	if message.MediaGroupID == "" {
 		m.processSingleMessage(message, chat)
 	} else {
 		m.processPartOfGroupMessage(message, chat)
+	}
+	if message.ReplyToMessage != nil {
+		m.processMessage(message.ReplyToMessage, chat)
 	}
 }
 
