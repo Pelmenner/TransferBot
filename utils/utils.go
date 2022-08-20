@@ -35,10 +35,6 @@ func DownloadFile(filePath string, url string) error {
 	return err
 }
 
-func ConcatenateMessageSender(user, chat string) string {
-	return user + "/" + chat
-}
-
 // thread-safe typed map wrapper
 type Map[K comparable, V any] struct {
 	mx sync.RWMutex

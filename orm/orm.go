@@ -19,9 +19,14 @@ type Attachment struct {
 	URL  string
 }
 
+type Sender struct {
+	Name string
+	Chat string
+}
+
 type Message struct {
-	Text        string
-	Sender      string
+	Text string
+	Sender
 	Attachments []*Attachment
 }
 
@@ -140,9 +145,9 @@ func AddUnsentMessage(db *sql.DB, message QueuedMessage) bool {
 	},
 		func(tx *sql.Tx) error {
 			res, err := tx.Exec(`INSERT INTO Messages
-							     VALUES ($1, $2, $3)`,
+							     VALUES ($1, $2, $3, $4)`,
 				&message.Destination.RowID,
-				&message.Sender, &message.Text)
+				&message.Sender.Name, &message.Text, &message.Sender.Chat)
 			if err != nil {
 				return err
 			}
@@ -200,7 +205,7 @@ func GetUnsentMessages(db *sql.DB, maxCnt int) []QueuedMessage {
 		ReadOnly:  false,
 	},
 		func(tx *sql.Tx) error {
-			rows, err := tx.Query(`SELECT sender, message_text, Messages.rowid, chat_id, chat_type, token, Chats.rowid
+			rows, err := tx.Query(`SELECT sender, sender_chat, message_text, Messages.rowid, chat_id, chat_type, token, Chats.rowid
 								   FROM Messages JOIN Chats ON Messages.destination_chat = Chats.rowid
 								   LIMIT $1`, &maxCnt)
 			if err != nil {
@@ -212,7 +217,7 @@ func GetUnsentMessages(db *sql.DB, maxCnt int) []QueuedMessage {
 			for rows.Next() {
 				message := QueuedMessage{}
 				messageRowID := -1
-				err := rows.Scan(&message.Sender, &message.Text, &messageRowID,
+				err := rows.Scan(&message.Sender.Name, &message.Sender.Chat, &message.Text, &messageRowID,
 					&message.Destination.ID, &message.Destination.Type,
 					&message.Destination.Token, &message.Destination.RowID)
 				if err != nil {
@@ -231,7 +236,7 @@ func GetUnsentMessages(db *sql.DB, maxCnt int) []QueuedMessage {
 				if err != nil {
 					return err
 				}
-				_, err = tx.Exec(`UPDATE Messages SET parent_message = NULL
+				_, err = tx.Exec(`UPDATE Attachments SET parent_message = NULL
 				                   WHERE parent_message = $1`, &id)
 				if err != nil {
 					return err
