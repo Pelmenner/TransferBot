@@ -1,0 +1,12 @@
+version: "3.7"
+services:
+  bot:
+    build: .
+    env_file:
+      - .env
+    environment:
+      - MIGRATE_DB=$MIGRATE_DB
+    volumes:
+      - bot-data:/app/data
+volumes:
+  bot-data:
