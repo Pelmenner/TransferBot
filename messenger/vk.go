@@ -59,9 +59,16 @@ func NewVKMessenger(baseMessenger BaseMessenger) *VKMessenger {
 	return messenger
 }
 
+func (m *VKMessenger) senderToString(sender Sender) string {
+	if sender.Name == "" {
+		return ""
+	}
+	return fmt.Sprintf("%s (%s):", sender.Name, sender.Chat)
+}
+
 func (m *VKMessenger) SendMessage(message Message, chat *Chat) bool {
 	messageBuilder := params.NewMessagesSendBuilder()
-	messageBuilder.Message(message.Sender + "\n" + message.Text)
+	messageBuilder.Message(m.senderToString(message.Sender) + "\n" + message.Text)
 	messageBuilder.RandomID(0)
 	messageBuilder.PeerID(int(chat.ID))
 
@@ -103,12 +110,12 @@ func (m *VKMessenger) SendMessage(message Message, chat *Chat) bool {
 
 func (m *VKMessenger) getSenderName(message object.MessagesMessage) string {
 	userResponse, err := m.vk.UsersGet(api.Params{"user_ids": message.FromID})
-	if err != nil {
+	if err != nil || len(userResponse) == 0 {
 		log.Print("could not find vk user with id ", message.FromID, err)
 		return ""
 	}
 	// have not found a way to get chat name
-	return utils.ConcatenateMessageSender(userResponse[0].FirstName+" "+userResponse[0].LastName, "vk")
+	return userResponse[0].FirstName + " " + userResponse[0].LastName
 }
 
 func (m *VKMessenger) ProcessCommand(message object.MessagesMessage, chat *Chat) bool {
@@ -144,13 +151,16 @@ func (m *VKMessenger) getWallAuthor(wall *object.WallWallpost) string {
 		name = groupResponse[0].Name
 	}
 
-	return utils.ConcatenateMessageSender(name, "vk")
+	return name
 }
 
 func (m *VKMessenger) processWall(wall object.WallWallpost, chat *Chat) {
 	message := Message{
-		Text:   wall.Text,
-		Sender: m.getWallAuthor(&wall),
+		Text: wall.Text,
+		Sender: Sender{
+			Name: m.getWallAuthor(&wall),
+			Chat: "vk",
+		},
 	}
 
 	for _, attachment := range wall.Attachments {
@@ -213,8 +223,11 @@ func (m *VKMessenger) ProcessMessage(message object.MessagesMessage, chat *Chat)
 		return
 	}
 	standardMessage := Message{
-		Text:   message.Text,
-		Sender: m.getSenderName(message),
+		Text: message.Text,
+		Sender: Sender{
+			Name: m.getSenderName(message),
+			Chat: "vk",
+		},
 	}
 	walls := []*object.WallWallpost{}
 	for _, attachment := range message.Attachments {

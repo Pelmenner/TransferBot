@@ -55,9 +55,10 @@ func getPreparedMediaList(message *Message, attachmentFullType, attachmentType, 
 		}
 		media = append(media, tgbotapi.InputMediaDocument{
 			BaseInputMedia: tgbotapi.BaseInputMedia{
-				Type:    attachmentFullType,
-				Media:   tgbotapi.FilePath(attachment.URL),
-				Caption: curCaption,
+				Type:      attachmentFullType,
+				Media:     tgbotapi.FilePath(attachment.URL),
+				Caption:   curCaption,
+				ParseMode: "HTML",
 			},
 		})
 	}
@@ -80,7 +81,7 @@ func (m *TGMessenger) sendSpecialAttachmentType(message Message, chat *Chat, att
 	attachmentFullType string, sendText Requirement) (success bool, needToSend bool) {
 	text := ""
 	if sendText != ReqNever {
-		text = message.Sender + "\n" + message.Text
+		text = m.senderToString(message.Sender) + "\n" + tgbotapi.EscapeText("HTML", message.Text)
 	}
 	media := getPreparedMediaList(&message, attachmentFullType, attachmentType, text)
 	if len(media) == 0 && sendText != ReqAlways {
@@ -88,7 +89,9 @@ func (m *TGMessenger) sendSpecialAttachmentType(message Message, chat *Chat, att
 	}
 	success = true
 	if len(media) == 0 {
-		_, err := m.tg.Send(tgbotapi.NewMessage(chat.ID, text))
+		tgMessage := tgbotapi.NewMessage(chat.ID, text)
+		tgMessage.ParseMode = "HTML"
+		_, err := m.tg.Send(tgMessage)
 		if err != nil {
 			log.Print("could not send tg message:", err)
 			success = false
@@ -102,6 +105,13 @@ func (m *TGMessenger) sendSpecialAttachmentType(message Message, chat *Chat, att
 		success = false
 	}
 	return success, true
+}
+
+func (m *TGMessenger) senderToString(sender Sender) string {
+	if sender.Name == "" {
+		return ""
+	}
+	return fmt.Sprintf("<b><u>%s (%s):</u></b>", sender.Name, sender.Chat)
 }
 
 func (m *TGMessenger) SendMessage(message Message, chat *Chat) bool {
@@ -134,7 +144,7 @@ func (m *TGMessenger) ProcessMediaGroup(message *tgbotapi.Message, chat *Chat) {
 
 	standardMessage := Message{
 		Text:        message.Text + message.Caption,
-		Sender:      getTGSenderName(message),
+		Sender:      getTGSender(message),
 		Attachments: []*Attachment{},
 	}
 	indexedAttachments := []IndexedAttachment{}
@@ -201,13 +211,23 @@ func (m *TGMessenger) addMediaGroupAttachment(fileID, fileName, fileType, mediaG
 	m.mediaGroupLoadings.Get(mediaGroupID).Done()
 }
 
-func getTGSenderName(message *tgbotapi.Message) string {
-	sender := utils.ConcatenateMessageSender(message.From.UserName, message.Chat.Title)
+func getTGUserName(user *tgbotapi.User) string {
+	return fmt.Sprintf("%s %s", user.FirstName, user.LastName)
+}
+
+func getTGSender(message *tgbotapi.Message) Sender {
+	sender := Sender{
+		Name: getTGUserName(message.From),
+		Chat: message.Chat.Title,
+	}
 	if message.ForwardFrom != nil {
-		sender += "\n" + message.ForwardFrom.UserName
+		sender.Name += "\n" + message.ForwardFrom.UserName
 	}
 	if message.ForwardFromChat != nil {
-		sender += "\n" + message.ForwardFromChat.Title
+		sender.Chat += "\n" + message.ForwardFromChat.Title
+	}
+	if sender.Chat == "" {
+		sender.Chat = "tg"
 	}
 	return sender
 }
@@ -215,7 +235,7 @@ func getTGSenderName(message *tgbotapi.Message) string {
 func (m *TGMessenger) processSingleMessage(message *tgbotapi.Message, chat *Chat) {
 	standardMessage := Message{
 		Text:   message.Text + message.Caption,
-		Sender: getTGSenderName(message),
+		Sender: getTGSender(message),
 	}
 	if message.Photo != nil {
 		standardMessage.Attachments = m.addAttachment(
@@ -248,13 +268,15 @@ func (m *TGMessenger) processPartOfGroupMessage(message *tgbotapi.Message, chat 
 
 func (m *TGMessenger) processMessage(message *tgbotapi.Message, chat *Chat) {
 	if message.ReplyToMessage != nil {
-		m.processMessage(message.ReplyToMessage, chat)
+		message.Text += "\nin reply to..."
 	}
-
 	if message.MediaGroupID == "" {
 		m.processSingleMessage(message, chat)
 	} else {
 		m.processPartOfGroupMessage(message, chat)
+	}
+	if message.ReplyToMessage != nil {
+		m.processMessage(message.ReplyToMessage, chat)
 	}
 }
 
