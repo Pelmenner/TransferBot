@@ -23,15 +23,14 @@ Supported messengers: VK, Telegram
 
 ## Running in Docker container
 
-Bot stores some persistent files in `data` directory, hence you'd better mount this directory to some docker volume to update more easily. 
-Storing environmental variables in local `.env` is also a good practice.
+In order for bot to run, you need to specify some environmental variables:
+* `TG_TOKEN` - Telegram bot token
+* `VK_TOKEN` - VK bot token
 
-To run migrations on database, you can pass `MIGRATE_DB=1` environment variable to container
+You can also define `MIGRATE_DB` environmental variable in order to run database migrations before starting bot
 
-Thus, your Docker call may look somewhat like this: 
+Environmental variables can be either defined in current shell session or stored in `.env` file in project root.
+The rest is handled by Docker Compose, thus your running command may look like this:  
+`MIGRATE_DB=1 docker-compose up -d`
 
-```
-docker run -d --env-file .env \
-    --mount source=bot-data,destination=/app/data \
-    transfer-bot
-```
+In order to shut the bot down you will need to run `docker-compose down`.
