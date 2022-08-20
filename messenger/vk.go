@@ -110,7 +110,7 @@ func (m *VKMessenger) SendMessage(message Message, chat *Chat) bool {
 
 func (m *VKMessenger) getSenderName(message object.MessagesMessage) string {
 	userResponse, err := m.vk.UsersGet(api.Params{"user_ids": message.FromID})
-	if err != nil {
+	if err != nil || len(userResponse) == 0 {
 		log.Print("could not find vk user with id ", message.FromID, err)
 		return ""
 	}
