@@ -1,6 +1,6 @@
 -- +goose Up
 ALTER TABLE Messages
-Add sender_chat TEXT NOT NULL
+ADD sender_chat TEXT NOT NULL
 DEFAULT "";
 
 -- +goose Down
