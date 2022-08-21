@@ -5,8 +5,25 @@ services:
     environment:
       - VK_TOKEN=$VK_TOKEN
       - TG_TOKEN=$TG_TOKEN
-      - MIGRATE_DB=$MIGRATE_DB
+      - MIGRATE_DB=${MIGRATE_DB-}
+      - DB_USER=$DB_USERNAME
+      - DB_PASSWORD=$DB_PASSWORD
     volumes:
       - bot-data:/app/data
+    networks:
+      - bot-net
+  db:
+    image: postgres:alpine
+    environment:
+      - POSTGRES_USER=$DB_USERNAME
+      - POSTGRES_PASSWORD=$DB_PASSWORD
+    networks:
+      - bot-net
+    volumes:
+      - db-storage:/var/lib/postgresql/data
 volumes:
   bot-data:
+  db-storage:
+networks:
+  bot-net:
+    driver: bridge
