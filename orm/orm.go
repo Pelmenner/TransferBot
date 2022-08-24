@@ -34,7 +34,7 @@ type Chat struct {
 	ID    int64
 	Token string
 	Type  string
-	RowID int64
+	RowID int32
 }
 
 type QueuedMessage struct {
@@ -99,13 +99,11 @@ func generateToken(chatID int64, chatType string) string {
 func AddChat(db *sql.DB, chatID int64, chatType string) *Chat {
 	token := generateToken(chatID, chatType)
 
-	res, err := db.Exec("INSERT INTO Chats VALUES ($1, $2, $3)",
+	res := db.QueryRow("INSERT INTO Chats VALUES ($1, $2, $3) RETURNING internal_id",
 		&chatID, &chatType, &token)
-	if err != nil {
-		log.Print(err)
-		return nil
-	}
-	rowID, err := res.LastInsertId()
+
+	var rowID int32
+	err := res.Scan(&rowID)
 	if err != nil {
 		log.Print(err)
 		return nil
@@ -144,14 +142,13 @@ func AddUnsentMessage(db *sql.DB, message QueuedMessage) bool {
 		ReadOnly:  false,
 	},
 		func(tx *sql.Tx) error {
-			res, err := tx.Exec(`INSERT INTO Messages
-							     VALUES ($1, $2, $3, $4)`,
+			res := tx.QueryRow(`INSERT INTO Messages
+								VALUES ($1, $2, $3, $4)
+								RETURNING internal_id`,
 				&message.Destination.RowID,
 				&message.Sender.Name, &message.Text, &message.Sender.Chat)
-			if err != nil {
-				return err
-			}
-			messageRowID, err := res.LastInsertId()
+			var messageRowID int32
+			err := res.Scan(&messageRowID)
 			if err != nil {
 				return err
 			}
