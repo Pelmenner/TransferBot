@@ -4,10 +4,10 @@ FROM golang:alpine
 
 WORKDIR /app
 
+RUN go install github.com/pressly/goose/v3/cmd/goose@latest
 COPY go.mod ./
 COPY go.sum ./
 RUN go mod download
-RUN go install github.com/pressly/goose/v3/cmd/goose@latest
 
 COPY *.go ./
 COPY config/*.go ./config/
