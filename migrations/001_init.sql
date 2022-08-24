@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS Attachments (
     data_type TEXT NOT NULL,
     data_url TEXT NOT NULL,
     parent_message SERIAL,
+    internal_id SERIAL PRIMARY KEY,
     FOREIGN KEY (parent_message) REFERENCES Messages(internal_id)
 );
 
