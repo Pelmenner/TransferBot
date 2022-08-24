@@ -7,8 +7,6 @@ WORKDIR /app
 COPY go.mod ./
 COPY go.sum ./
 RUN go mod download
-RUN apk update
-RUN apk add gcc musl-dev
 RUN go install github.com/pressly/goose/v3/cmd/goose@latest
 
 COPY *.go ./
