@@ -48,7 +48,7 @@ func repeatedProcessUnsentMessages(db *sql.DB, messengers map[string]messenger.M
 func main() {
 	messengers := make(map[string]messenger.Messenger)
 
-	db, err := sql.Open("sqlite3", "data/db.sqlite3")
+	db, err := sql.Open("pgx", os.Getenv("DB_CONNECT_STRING"))
 	if err != nil {
 		log.Fatal("could not connect to database:", err)
 	}

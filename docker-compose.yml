@@ -6,8 +6,7 @@ services:
       - VK_TOKEN=$VK_TOKEN
       - TG_TOKEN=$TG_TOKEN
       - MIGRATE_DB=${MIGRATE_DB-}
-      - DB_USER=$DB_USERNAME
-      - DB_PASSWORD=$DB_PASSWORD
+      - DB_CONNECT_STRING="user=$DB_USERNAME password=$DB_PASSWORD host=db port=5432 sslmode=disable"
     volumes:
       - bot-data:/app/data
     networks:

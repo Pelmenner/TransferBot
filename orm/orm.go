@@ -10,7 +10,7 @@ import (
 	"log"
 	"time"
 
-	_ "github.com/mattn/go-sqlite3"
+	_ "github.com/jackc/pgx/v4/stdlib"
 )
 
 // TODO: ?
@@ -262,7 +262,8 @@ func getChatRowIDByToken(tx *sql.Tx, token string) (int, error) {
 }
 
 // Subscribes proveded chat on another with given token.
-//  Returns true on success
+//
+//	Returns true on success
 func Subscribe(db *sql.DB, subscriber *Chat, subscriptionToken string) bool {
 	err := transact(db, &sql.TxOptions{
 		Isolation: sql.LevelSerializable,
@@ -291,7 +292,8 @@ func Subscribe(db *sql.DB, subscriber *Chat, subscriptionToken string) bool {
 }
 
 // Unsubscribes provided chat from another with given token.
-//  Returns true on success
+//
+//	Returns true on success
 func Unsubscribe(db *sql.DB, subscriber *Chat, subscriptionToken string) bool {
 	err := transact(db, &sql.TxOptions{
 		Isolation: sql.LevelSerializable,
