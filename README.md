@@ -21,11 +21,13 @@ Supported messengers: VK, Telegram
 - Subscribe on the channel by using `/subscribe <token>` command in receiving chat
 - In case the subscription is no more needed, unsubscribe from a channel using `/unsubscribe <token>`
 
-## Running in Docker container
+## Running using Docker Compose
 
 In order for bot to run, you need to specify some environmental variables:
 * `TG_TOKEN` - Telegram bot token
 * `VK_TOKEN` - VK bot token
+* `DB_USERNAME` - database username
+* `DB_PASSWORD` - database password
 
 You can also define `MIGRATE_DB` environmental variable in order to run database migrations before starting bot
 
@@ -34,3 +36,14 @@ The rest is handled by Docker Compose, thus your running command may look like t
 `MIGRATE_DB=1 docker-compose up -d`
 
 In order to shut the bot down you will need to run `docker-compose down`.
+
+## Running without local database
+
+Docker Compose script runs local instance of PostgreSQL server.
+One can use Postgres server of his choice instead of one run in local container.
+In order to achieve that, one will need to build & run bot with following environmental variables:
+* `VK_TOKEN`
+* `TG_TOKEN`
+* `DB_CONNECT_STRING` - database connection string specifically for selected database
+
+Migrations are managed by [Goose](https://github.com/pressly/Goose), thus one should make use of it to set up database.
