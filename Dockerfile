@@ -4,12 +4,13 @@ FROM golang:alpine
 
 WORKDIR /app
 
+RUN apk update
+RUN apk add postgresql
+RUN go install github.com/pressly/goose/v3/cmd/goose@latest
+
 COPY go.mod ./
 COPY go.sum ./
 RUN go mod download
-RUN apk update
-RUN apk add gcc musl-dev
-RUN go install github.com/pressly/goose/v3/cmd/goose@latest
 
 COPY *.go ./
 COPY config/*.go ./config/
