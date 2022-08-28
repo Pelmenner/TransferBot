@@ -8,15 +8,15 @@ CREATE TABLE IF NOT EXISTS Chats (
 );
 
 CREATE TABLE IF NOT EXISTS Subscriptions (
-    source_chat SERIAL NOT NULL,
-    destination_chat SERIAL NOT NULL,
+    source_chat INTEGER NOT NULL,
+    destination_chat INTEGER NOT NULL,
     FOREIGN KEY (source_chat) REFERENCES Chats(internal_id),
     FOREIGN KEY (destination_chat) REFERENCES Chats(internal_id),
     CONSTRAINT single_subscription UNIQUE (source_chat, destination_chat)
 );
 
 CREATE TABLE IF NOT EXISTS Messages (
-    destination_chat SERIAL NOT NULL,
+    destination_chat INTEGER NOT NULL,
     sender TEXT,
     message_text TEXT,
     sender_chat TEXT NOT NULL,
@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS Messages (
 CREATE TABLE IF NOT EXISTS Attachments (
     data_type TEXT NOT NULL,
     data_url TEXT NOT NULL,
-    parent_message SERIAL,
+    parent_message INTEGER,
     internal_id SERIAL PRIMARY KEY,
     FOREIGN KEY (parent_message) REFERENCES Messages(internal_id)
 );
