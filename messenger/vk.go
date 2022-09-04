@@ -52,6 +52,9 @@ func NewVKMessenger(baseMessenger BaseMessenger) *VKMessenger {
 		chat := messenger.GetChatById(int64(id), "vk")
 		if chat == nil {
 			chat = baseMessenger.CreateNewChat(int64(id), "vk")
+			if chat == nil {
+				return
+			}
 		}
 		messenger.ProcessMessage(obj.Message, chat)
 	})
