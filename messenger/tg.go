@@ -306,6 +306,9 @@ func (m *TGMessenger) Run() {
 			chat := m.GetChatById(update.Message.Chat.ID, "tg")
 			if chat == nil {
 				chat = m.CreateNewChat(update.Message.Chat.ID, "tg")
+				if chat == nil {
+					continue
+				}
 			}
 
 			if update.Message.IsCommand() {

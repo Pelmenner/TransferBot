@@ -7,7 +7,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"log"
 	"time"
 
 	_ "github.com/jackc/pgx/v4/stdlib"
@@ -64,13 +63,12 @@ func transact(db *sql.DB, txOpts *sql.TxOptions, txFunc func(*sql.Tx) error) (er
 }
 
 // findSubscribedChats returns all chats subscribed on the given one
-func FindSubscribedChats(db *sql.DB, chat Chat) []Chat {
+func FindSubscribedChats(db *sql.DB, chat Chat) ([]Chat, error) {
 	rows, err := db.Query(`SELECT chat_id, token, chat_type, Chats.internal_id
 	FROM Subscriptions JOIN Chats ON Subscriptions.destination_chat = Chats.internal_id
 	WHERE source_chat = $1`, chat.RowID)
 	if err != nil {
-		log.Print(err)
-		return []Chat{}
+		return []Chat{}, err
 	}
 
 	res := []Chat{}
@@ -79,14 +77,13 @@ func FindSubscribedChats(db *sql.DB, chat Chat) []Chat {
 
 		err := rows.Scan(&buf.ID, &buf.Token, &buf.Type, &buf.RowID)
 		if err != nil {
-			log.Print(err)
-			return []Chat{}
+			return []Chat{}, err
 		}
 
 		res = append(res, buf)
 	}
 
-	return res
+	return res, nil
 }
 
 func generateToken(chatID int64, chatType string) string {
@@ -96,7 +93,7 @@ func generateToken(chatID int64, chatType string) string {
 }
 
 // addChat creates new chat entry with given id in messenger and type
-func AddChat(db *sql.DB, chatID int64, chatType string) *Chat {
+func AddChat(db *sql.DB, chatID int64, chatType string) (*Chat, error) {
 	token := generateToken(chatID, chatType)
 
 	res := db.QueryRow("INSERT INTO Chats VALUES ($1, $2, $3) RETURNING internal_id",
@@ -105,8 +102,7 @@ func AddChat(db *sql.DB, chatID int64, chatType string) *Chat {
 	var rowID int32
 	err := res.Scan(&rowID)
 	if err != nil {
-		log.Print(err)
-		return nil
+		return nil, err
 	}
 
 	return &Chat{
@@ -114,29 +110,28 @@ func AddChat(db *sql.DB, chatID int64, chatType string) *Chat {
 		Token: token,
 		Type:  chatType,
 		RowID: rowID,
-	}
+	}, nil
 }
 
 // getChat returns chat object with given id in messenger
-// if an error occured, returns nil and logs error
-func GetChat(db *sql.DB, chatID int64, chatType string) *Chat {
+func GetChat(db *sql.DB, chatID int64, chatType string) (*Chat, error) {
 	res := Chat{ID: chatID, Type: chatType}
 	row := db.QueryRow(`SELECT token, internal_id FROM Chats
 	WHERE chat_id = $1 AND chat_type = $2`, &chatID, &chatType)
 
 	err := row.Scan(&res.Token, &res.RowID)
 	if err != nil {
-		if err != sql.ErrNoRows {
-			log.Print(err)
+		if err == sql.ErrNoRows {
+			return nil, nil
 		}
-		return nil
+		return nil, err
 	}
 
-	return &res
+	return &res, nil
 }
 
 // addUnsentMessage adds message to send later
-func AddUnsentMessage(db *sql.DB, message QueuedMessage) bool {
+func AddUnsentMessage(db *sql.DB, message QueuedMessage) error {
 	err := transact(db, &sql.TxOptions{
 		Isolation: sql.LevelSerializable,
 		ReadOnly:  false,
@@ -166,12 +161,7 @@ func AddUnsentMessage(db *sql.DB, message QueuedMessage) bool {
 			return nil
 		})
 
-	if err != nil {
-		log.Print(err)
-		return false
-	}
-
-	return true
+	return err
 }
 
 func getMessageAttachments(tx *sql.Tx, messageRowID int, attachments []*Attachment) error {
@@ -195,7 +185,7 @@ func getMessageAttachments(tx *sql.Tx, messageRowID int, attachments []*Attachme
 }
 
 // getUnsentMessages returns all messages to send and deletes them from db
-func GetUnsentMessages(db *sql.DB, maxCnt int) []QueuedMessage {
+func GetUnsentMessages(db *sql.DB, maxCnt int) ([]QueuedMessage, error) {
 	res := []QueuedMessage{}
 	err := transact(db, &sql.TxOptions{
 		Isolation: sql.LevelSerializable,
@@ -244,11 +234,10 @@ func GetUnsentMessages(db *sql.DB, maxCnt int) []QueuedMessage {
 		})
 
 	if err != nil {
-		log.Print(err)
-		return []QueuedMessage{}
+		return nil, nil
 	}
 
-	return res
+	return res, nil
 }
 
 func getChatRowIDByToken(tx *sql.Tx, token string) (int, error) {
@@ -259,8 +248,7 @@ func getChatRowIDByToken(tx *sql.Tx, token string) (int, error) {
 }
 
 // Subscribes proveded chat on another with given token.
-// Returns true on success
-func Subscribe(db *sql.DB, subscriber *Chat, subscriptionToken string) bool {
+func Subscribe(db *sql.DB, subscriber *Chat, subscriptionToken string) error {
 	err := transact(db, &sql.TxOptions{
 		Isolation: sql.LevelSerializable,
 		ReadOnly:  false,
@@ -279,17 +267,11 @@ func Subscribe(db *sql.DB, subscriber *Chat, subscriptionToken string) bool {
 			return nil
 		})
 
-	if err != nil {
-		log.Print(err)
-		return false
-	}
-
-	return true
+	return err
 }
 
 // Unsubscribes provided chat from another with given token.
-// Returns true on success
-func Unsubscribe(db *sql.DB, subscriber *Chat, subscriptionToken string) bool {
+func Unsubscribe(db *sql.DB, subscriber *Chat, subscriptionToken string) error {
 	err := transact(db, &sql.TxOptions{
 		Isolation: sql.LevelSerializable,
 		ReadOnly:  false,
@@ -317,16 +299,11 @@ func Unsubscribe(db *sql.DB, subscriber *Chat, subscriptionToken string) bool {
 			return nil
 		})
 
-	if err != nil {
-		log.Print(err)
-		return false
-	}
-
-	return true
+	return err
 }
 
 // getUnusedAttachments returns all attachments which will be never sent anymore and deletes them
-func GetUnusedAttachments(db *sql.DB) []*Attachment {
+func GetUnusedAttachments(db *sql.DB) ([]*Attachment, error) {
 	res := []*Attachment{}
 	err := transact(db, &sql.TxOptions{
 		Isolation: sql.LevelSerializable,
@@ -365,9 +342,8 @@ func GetUnusedAttachments(db *sql.DB) []*Attachment {
 		})
 
 	if err != nil {
-		log.Print(err)
-		return []*Attachment{}
+		return nil, err
 	}
 
-	return res
+	return res, err
 }
