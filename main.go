@@ -86,7 +86,7 @@ func main() {
 	addSubscription := func(subscriber *orm.Chat, subscriptionToken string) {
 		log.Printf("subscribe %+v on chat with token %s", subscriber, subscriptionToken)
 		var statusMessage string
-		if err := orm.Subscribe(db, subscriber, subscriptionToken); err != nil {
+		if err := orm.Subscribe(db, subscriber, subscriptionToken); err == nil {
 			statusMessage = "successfully subscribed!"
 		} else {
 			log.Print(err)
@@ -98,7 +98,7 @@ func main() {
 	cancelSubscription := func(subscriber *orm.Chat, subscriptionToken string) {
 		log.Printf("unsubscribe chat %+v from chat with token %s", subscriber, subscriptionToken)
 		var statusMessage string
-		if err := orm.Unsubscribe(db, subscriber, subscriptionToken); err != nil {
+		if err := orm.Unsubscribe(db, subscriber, subscriptionToken); err == nil {
 			statusMessage = "successfully unsubscribed!"
 		} else {
 			log.Print(err)
