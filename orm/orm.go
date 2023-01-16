@@ -199,7 +199,7 @@ func GetUnsentMessages(db *sql.DB, maxCnt int) ([]QueuedMessage, error) {
 				return err
 			}
 
-			messagesToDelete := []int{}
+			messageRowIDs := []int{}
 			// TODO: remove queries from loop
 			for rows.Next() {
 				message := QueuedMessage{}
@@ -211,14 +211,17 @@ func GetUnsentMessages(db *sql.DB, maxCnt int) ([]QueuedMessage, error) {
 					return err
 				}
 
-				if err = getMessageAttachments(tx, messageRowID, message.Attachments); err != nil {
-					return err
-				}
-				messagesToDelete = append(messagesToDelete, messageRowID)
+				messageRowIDs = append(messageRowIDs, messageRowID)
 				res = append(res, message)
 			}
 
-			for _, id := range messagesToDelete {
+			for i, message := range res {
+				if err = getMessageAttachments(tx, messageRowIDs[i], message.Attachments); err != nil {
+					return err
+				}
+			}
+
+			for _, id := range messageRowIDs {
 				_, err := tx.Exec("DELETE FROM Messages WHERE Messages.internal_id = $1", &id)
 				if err != nil {
 					return err
@@ -234,7 +237,7 @@ func GetUnsentMessages(db *sql.DB, maxCnt int) ([]QueuedMessage, error) {
 		})
 
 	if err != nil {
-		return nil, nil
+		return nil, err
 	}
 
 	return res, nil
