@@ -321,11 +321,7 @@ func GetUnusedAttachments(db *sql.DB) ([]*Attachment, error) {
 				return err
 			}
 
-			stmt, err := tx.Prepare("DELETE FROM Attachments WHERE internal_id = $1")
-			if err != nil {
-				return err
-			}
-
+			attachmentRowIDs := []int{}
 			for rows.Next() {
 				attachment := Attachment{}
 				rowID := -1
@@ -335,6 +331,15 @@ func GetUnusedAttachments(db *sql.DB) ([]*Attachment, error) {
 				}
 
 				res = append(res, &attachment)
+				attachmentRowIDs = append(attachmentRowIDs, rowID)
+			}
+
+			stmt, err := tx.Prepare("DELETE FROM Attachments WHERE internal_id = $1")
+			if err != nil {
+				return err
+			}
+
+			for _, rowID := range attachmentRowIDs {
 				_, err = stmt.Exec(&rowID)
 				if err != nil {
 					return err
