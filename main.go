@@ -4,6 +4,7 @@ import (
 	"Pelmenner/TransferBot/config"
 	"Pelmenner/TransferBot/messenger"
 	"Pelmenner/TransferBot/orm"
+	"context"
 	"database/sql"
 	"log"
 	"os"
@@ -141,8 +142,8 @@ func main() {
 
 	go repeatedProcessUnsentMessages(db, messengers)
 	go repeatedFileCleanup(db)
-	go TGMessenger.Run()
+	go TGMessenger.Run(context.Background())
 
 	log.Println("Start Long Poll")
-	VKMessenger.Run()
+	VKMessenger.Run(context.Background())
 }

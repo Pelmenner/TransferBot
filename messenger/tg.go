@@ -3,6 +3,7 @@ package messenger
 import (
 	"Pelmenner/TransferBot/config"
 	"Pelmenner/TransferBot/utils"
+	"context"
 	"fmt"
 	"log"
 	"os"
@@ -14,6 +15,7 @@ import (
 	. "Pelmenner/TransferBot/orm"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"golang.org/x/time/rate"
 )
 
 type IndexedAttachment struct {
@@ -74,8 +76,10 @@ const (
 )
 
 // Sends all attahchments of given type in a message;
-//  Sends text from provided message only if sendText is Always
-//  or sendText is optional and there message is already not empty
+//
+//	Sends text from provided message only if sendText is Always
+//	or sendText is optional and there message is already not empty
+//
 // Returns result (success) of sending and a value showing need to do it (was message not empty?)
 func (m *TGMessenger) sendSpecialAttachmentType(message Message, chat *Chat, attachmentType,
 	attachmentFullType string, sendText Requirement) (success bool, needToSend bool) {
@@ -292,13 +296,19 @@ func (m *TGMessenger) processCommand(message *tgbotapi.Message, chat *Chat) {
 	}
 }
 
-func (m *TGMessenger) Run() {
+func (m *TGMessenger) Run(ctx context.Context) {
+	requestRateLimiter := rate.NewLimiter(rate.Limit(1/config.TGSleepIntervalSec), 1)
+	lastUpdateID := -1
 	for {
-		u := tgbotapi.NewUpdate(0)
+		requestRateLimiter.Wait(ctx)
+		u := tgbotapi.NewUpdate(lastUpdateID + 1)
 		u.Timeout = config.TGBotAPITimeoutSec
 		updates := m.tg.GetUpdatesChan(u)
 
 		for update := range updates {
+			if update.UpdateID > lastUpdateID {
+				lastUpdateID = update.UpdateID
+			}
 			if update.Message == nil {
 				continue
 			}
@@ -318,6 +328,5 @@ func (m *TGMessenger) Run() {
 				go m.processMessage(update.Message, chat)
 			}
 		}
-		time.Sleep(config.TGSleepIntervalSec * time.Second)
 	}
 }
