@@ -13,6 +13,7 @@ services:
       - bot-net
     depends_on:
       - db
+    restart: on-failure
   db:
     image: postgres:alpine
     environment:

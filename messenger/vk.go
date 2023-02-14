@@ -1,6 +1,7 @@
 package messenger
 
 import (
+	"Pelmenner/TransferBot/config"
 	"Pelmenner/TransferBot/utils"
 
 	"context"
@@ -9,6 +10,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"golang.org/x/time/rate"
 
 	"github.com/SevereCloud/vksdk/v2/api"
 	"github.com/SevereCloud/vksdk/v2/api/params"
@@ -258,6 +261,12 @@ func (m *VKMessenger) ProcessMessage(message object.MessagesMessage, chat *Chat)
 	}
 }
 
-func (m *VKMessenger) Run() {
-	m.longPoll.Run()
+func (m *VKMessenger) Run(ctx context.Context) {
+	restartLimiter := rate.NewLimiter(rate.Limit(config.LongPollRestartMaxRate), 1)
+	for {
+		restartLimiter.Wait(ctx)
+		if err := m.longPoll.Run(); err != nil {
+			log.Print("VK longpoll error:", err)
+		}
+	}
 }

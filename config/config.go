@@ -8,4 +8,5 @@ const (
 	FileCleanupIntervalSec = 60
 	RetrySendIntervalSec   = 60
 	UnsentRetrieveMaxCnt   = 10
+	LongPollRestartMaxRate = 0.2 // restarts per sec
 )
