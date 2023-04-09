@@ -222,12 +222,12 @@ func GetUnsentMessages(db *sql.DB, maxCnt int) ([]QueuedMessage, error) {
 			}
 
 			for _, id := range messageRowIDs {
-				_, err := tx.Exec("DELETE FROM Messages WHERE Messages.internal_id = $1", &id)
+				_, err := tx.Exec(`UPDATE Attachments SET parent_message = NULL 
+						WHERE parent_message = $0`, &id)
 				if err != nil {
 					return err
 				}
-				_, err = tx.Exec(`UPDATE Attachments SET parent_message = NULL
-				                   WHERE parent_message = $1`, &id)
+				_, err = tx.Exec("DELETE FROM Messages WHERE Messages.internal_id = $1", &id)
 				if err != nil {
 					return err
 				}
