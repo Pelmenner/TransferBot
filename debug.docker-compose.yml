@@ -4,7 +4,7 @@ services:
     container_name: controller
     build:
       context: src
-      dockerfile: ./controller/Dockerfile
+      dockerfile: ./controller/debug.Dockerfile
     environment:
       - MIGRATE_DB=${MIGRATE_DB-}
       - DB_CONNECT_STRING=user=$DB_USERNAME password=$DB_PASSWORD host=db port=5432 sslmode=disable
@@ -12,12 +12,16 @@ services:
       - TG_SERVICE_HOST=messenger-tg:$TG_SERVICE_PORT
       - PORT=$CONTROLLER_PORT
     volumes:
-      - bot-data:/transferbot/data
+      - bot-data:/app/data
     networks:
       - bot-net
+    ports:
+      - '40000:40000'
     depends_on:
       - db
     restart: on-failure
+    security_opt:
+      - "seccomp:unconfined"
 
   messenger-vk:
     container_name: messenger-vk
@@ -29,7 +33,7 @@ services:
       - VK_TOKEN=$VK_TOKEN
       - PORT=$VK_SERVICE_PORT
     volumes:
-      - bot-data:/transferbot/data
+      - bot-data:/app/data
     networks:
       - bot-net
     depends_on:
@@ -45,7 +49,7 @@ services:
       - TG_TOKEN=$TG_TOKEN
       - PORT=$TG_SERVICE_PORT
     volumes:
-      - bot-data:/transferbot/data
+      - bot-data:/app/data
     networks:
       - bot-net
     depends_on:

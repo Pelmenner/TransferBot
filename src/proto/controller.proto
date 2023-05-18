@@ -1,0 +1,57 @@
+syntax = "proto3";
+package controller;
+import "messenger.proto";
+option go_package="github.com/Pelmenner/TransferBot/proto/controller";
+
+service Controller {
+  rpc HandleNewMessage(HandleMessageRequest) returns (HandleMessageResponse) {}
+  rpc Subscribe(SubscribeRequest) returns (SubscribeResponse) {}
+  rpc Unsubscribe(UnsubscribeRequest) returns (UnsubscribeResponse) {}
+  rpc GetChat(GetChatRequest) returns (GetChatResponse) {}
+  rpc CreateChat(CreateChatRequest) returns (CreateChatResponse) {}
+}
+
+message HandleMessageRequest {
+  messenger.Message message = 1;
+  messenger.Chat chat = 2;
+}
+
+message HandleMessageResponse {
+
+}
+
+message SubscribeRequest {
+  messenger.Chat chat = 1;
+  string token = 2;
+}
+
+message SubscribeResponse {
+
+}
+
+message UnsubscribeRequest {
+  messenger.Chat chat = 1;
+  string token = 2;
+}
+
+message UnsubscribeResponse {
+
+}
+
+message GetChatRequest {
+  int64 chatID = 1;
+  string messenger = 2;
+}
+
+message GetChatResponse {
+  optional messenger.Chat chat = 1;
+}
+
+message CreateChatRequest {
+  int64 chatID = 1;
+  string messenger = 2;
+}
+
+message CreateChatResponse {
+  optional messenger.Chat chat = 1;
+}
