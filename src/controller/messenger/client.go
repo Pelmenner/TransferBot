@@ -18,14 +18,14 @@ func NewMessengerClient(cc grpc.ClientConnInterface) *MessengerClient {
 	}
 }
 
-func (m *MessengerClient) SendMessage(message *orm.Message, chat *orm.Chat) bool {
+func (m *MessengerClient) SendMessage(message *orm.Message, chat *orm.Chat) error {
 	pbMessage := messageToProto(message)
 	pbChat := chatToProto(chat)
-	m.ChatServiceClient.SendMessage(context.TODO(), &msg.SendMessageRequest{
+	_, err := m.ChatServiceClient.SendMessage(context.TODO(), &msg.SendMessageRequest{
 		Message: pbMessage,
 		Chat:    pbChat,
-	}) // TODO: handle error
-	return true
+	})
+	return err
 }
 
 func messageToProto(message *orm.Message) *msg.Message {

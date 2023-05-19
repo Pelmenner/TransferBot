@@ -162,17 +162,18 @@ func (m *TGMessenger) ProcessMediaGroup(message *tgbotapi.Message, chat *msg.Cha
 		attachment := indexedAttachment.Attachment
 		standardMessage.Attachments = append(standardMessage.Attachments, &attachment)
 	}
-	m.MessageCallback(&standardMessage, chat)
+	if err := m.MessageCallback(&standardMessage, chat); err != nil {
+		log.Printf("message callback error: %v", err)
+	}
 	m.mediaGroups.Delete(mediaGroupID)
 	m.mediaGroupLoadings.Delete(mediaGroupID)
 }
 
 // returns path to saved file
-func (m *TGMessenger) saveTelegramFile(config tgbotapi.FileConfig, fileName string) string {
+func (m *TGMessenger) saveTelegramFile(config tgbotapi.FileConfig, fileName string) (string, error) {
 	file, err := m.tg.GetFile(config)
 	if err != nil {
-		log.Print("error loading file", err)
-		return ""
+		return "", fmt.Errorf("error loading file: %w", err)
 	}
 
 	if fileName == "" {
@@ -181,31 +182,30 @@ func (m *TGMessenger) saveTelegramFile(config tgbotapi.FileConfig, fileName stri
 	filePath := fmt.Sprintf("/transferbot/data/downloads/tg/%s/%s", file.FileID, fileName)
 	err = DownloadFile(filePath, file.Link(m.tg.Token))
 	if err != nil {
-		log.Print("error downloading file", err)
-		return ""
+		return "", fmt.Errorf("error downloading file: %w", err)
 	}
-	return filePath
+	return filePath, nil
 }
 
-func (m *TGMessenger) addAttachment(attachments []*msg.Attachment, fileID, fileName, fileType string) []*msg.Attachment {
-	url := m.saveTelegramFile(tgbotapi.FileConfig{FileID: fileID}, fileName)
-	if url != "" {
-		return append(attachments,
-			&msg.Attachment{
-				Type: fileType,
-				Url:  url,
-			})
+func (m *TGMessenger) addAttachment(attachments []*msg.Attachment, fileID, fileName, fileType string) ([]*msg.Attachment, error) {
+	url, err := m.saveTelegramFile(tgbotapi.FileConfig{FileID: fileID}, fileName)
+	if err != nil {
+		return attachments, err
 	}
-	return attachments
+	return append(attachments,
+		&msg.Attachment{
+			Type: fileType,
+			Url:  url,
+		}), nil
 }
 
-func (m *TGMessenger) addMediaGroupAttachment(fileID, fileName, fileType, mediaGroupID string, messageID int) {
+func (m *TGMessenger) addMediaGroupAttachment(fileID, fileName, fileType, mediaGroupID string, messageID int) error {
 	m.mediaGroupLoadings.Get(mediaGroupID).Add(1)
 
-	url := m.saveTelegramFile(tgbotapi.FileConfig{FileID: fileID}, fileName)
-	if url == "" {
+	url, err := m.saveTelegramFile(tgbotapi.FileConfig{FileID: fileID}, fileName)
+	if err != nil {
 		m.mediaGroupLoadings.Get(mediaGroupID).Done()
-		return
+		return err
 	}
 
 	m.mediaGroups.Get(mediaGroupID) <- IndexedAttachment{
@@ -213,6 +213,7 @@ func (m *TGMessenger) addMediaGroupAttachment(fileID, fileName, fileType, mediaG
 		ID:         messageID,
 	}
 	m.mediaGroupLoadings.Get(mediaGroupID).Done()
+	return nil
 }
 
 func getTGUserName(user *tgbotapi.User) string {
@@ -242,23 +243,29 @@ func chatFromMessage(message *tgbotapi.Message) *msg.Chat {
 	}
 }
 
-func (m *TGMessenger) processSingleMessage(message *tgbotapi.Message, chat *msg.Chat) {
+func (m *TGMessenger) processSingleMessage(message *tgbotapi.Message, chat *msg.Chat) (err error) {
 	standardMessage := msg.Message{
 		Text:   message.Text + message.Caption,
 		Sender: getTGSender(message),
 	}
 	if message.Photo != nil {
-		standardMessage.Attachments = m.addAttachment(
+		standardMessage.Attachments, err = m.addAttachment(
 			standardMessage.Attachments, message.Photo[len(message.Photo)-1].FileID, "", "photo")
+		if err != nil {
+			return err
+		}
 	}
 	if message.Document != nil {
-		standardMessage.Attachments = m.addAttachment(
+		standardMessage.Attachments, err = m.addAttachment(
 			standardMessage.Attachments, message.Document.FileID, message.Document.FileName, "doc")
+		if err != nil {
+			return err
+		}
 	}
-	m.MessageCallback(&standardMessage, chat)
+	return m.MessageCallback(&standardMessage, chat)
 }
 
-func (m *TGMessenger) processPartOfGroupMessage(message *tgbotapi.Message, chat *msg.Chat) {
+func (m *TGMessenger) processPartOfGroupMessage(message *tgbotapi.Message, chat *msg.Chat) error {
 	if !m.mediaGroups.Contains(message.MediaGroupID) {
 		m.mediaGroups.Set(message.MediaGroupID, make(chan IndexedAttachment))
 		m.mediaGroupLoadings.Set(message.MediaGroupID, &sync.WaitGroup{})
@@ -267,70 +274,75 @@ func (m *TGMessenger) processPartOfGroupMessage(message *tgbotapi.Message, chat 
 	}
 
 	if message.Photo != nil {
-		m.addMediaGroupAttachment(message.Photo[len(message.Photo)-1].FileID, "",
-			"photo", message.MediaGroupID, message.MessageID)
+		if err := m.addMediaGroupAttachment(message.Photo[len(message.Photo)-1].FileID, "",
+			"photo", message.MediaGroupID, message.MessageID); err != nil {
+			return err
+		}
 	}
 	if message.Document != nil {
-		m.addMediaGroupAttachment(message.Document.FileID, message.Document.FileName,
-			"doc", message.MediaGroupID, message.MessageID)
+		if err := m.addMediaGroupAttachment(message.Document.FileID, message.Document.FileName,
+			"doc", message.MediaGroupID, message.MessageID); err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
-func (m *TGMessenger) processMessage(message *tgbotapi.Message, chat *msg.Chat) error {
+func (m *TGMessenger) processMessage(message *tgbotapi.Message, chat *msg.Chat) (err error) {
 	if message.ReplyToMessage != nil {
 		message.Text += "\nin reply to..."
 	}
 	if message.MediaGroupID == "" {
-		m.processSingleMessage(message, chat)
+		err = m.processSingleMessage(message, chat)
 	} else {
-		m.processPartOfGroupMessage(message, chat)
+		err = m.processPartOfGroupMessage(message, chat)
 	}
 	if message.ReplyToMessage != nil {
 		return m.processMessage(message.ReplyToMessage, chat)
 	}
-	return nil // TODO: catch errors
+	return err
 }
 
-func (m *TGMessenger) getChatToken(chatID int64) string {
-	return m.GetChatByID(chatID, "tg").Token
+func (m *TGMessenger) getChatToken(chatID int64) (string, error) {
+	chat, err := m.GetChatByID(chatID, "tg")
+	if err != nil {
+		return "", err
+	}
+	return chat.Token, nil
 }
+
+var errCommandNotFound = fmt.Errorf("command not found")
 
 func (m *TGMessenger) processCommand(message *tgbotapi.Message, chat *msg.Chat) error {
 	switch message.Command() {
 	case "get_token":
-		response := tgbotapi.NewMessage(message.Chat.ID, m.getChatToken(chat.Id))
-		_, err := m.tg.Send(response)
-		return err
+		return m.processGetToken(message, chat)
 	case "subscribe":
-		m.SubscribeCallback(chat, message.CommandArguments())
+		return m.SubscribeCallback(chat, message.CommandArguments())
 	case "unsubscribe":
-		m.UnsubscribeCallback(chat, message.CommandArguments())
+		return m.UnsubscribeCallback(chat, message.CommandArguments())
 	}
-	return nil // TODO: process other errors
+	return errCommandNotFound
 }
 
-func (m *TGMessenger) RunErrorHandler(errorChan <-chan error, ctx context.Context, cancelCtx context.CancelFunc) {
-	for {
-		select {
-		case err := <-errorChan:
-			if err == nil {
-				continue
-			}
-			log.Printf("Error %v", err)
-			cancelCtx()
-			return
-		case <-ctx.Done():
-			return
-		}
-	}
+func (m *TGMessenger) processGetToken(message *tgbotapi.Message, chat *msg.Chat) error {
+	token, err := m.getChatToken(chat.Id)
+	response := tgbotapi.NewMessage(message.Chat.ID, token)
+	_, err = m.tg.Send(response)
+	return err
+}
+
+func (m *TGMessenger) processSubscribe(message *tgbotapi.Message, chat *msg.Chat) error {
+	return m.SubscribeCallback(chat, message.CommandArguments())
+}
+
+func (m *TGMessenger) processUnsubscribe(message *tgbotapi.Message, chat *msg.Chat) error {
+	return m.UnsubscribeCallback(chat, message.CommandArguments())
 }
 
 func (m *TGMessenger) Run(ctx context.Context) {
 	requestRateLimiter := rate.NewLimiter(rate.Limit(1/config.TGSleepIntervalSec), 1)
 	lastUpdateID := -1
-	errorChan := make(chan error)
-	ctx, cancelCtx := context.WithCancel(ctx)
-	go m.RunErrorHandler(errorChan, ctx, cancelCtx)
 
 	for {
 		if err := requestRateLimiter.Wait(ctx); err != nil {
@@ -342,7 +354,6 @@ func (m *TGMessenger) Run(ctx context.Context) {
 		updates := m.tg.GetUpdatesChan(u)
 
 		for update := range updates {
-			log.Printf("new update: %+v", update)
 			if update.UpdateID > lastUpdateID {
 				lastUpdateID = update.UpdateID
 			}
@@ -350,22 +361,31 @@ func (m *TGMessenger) Run(ctx context.Context) {
 				continue
 			}
 
-			chat := m.GetChatByID(update.Message.Chat.ID, "tg")
+			chat, err := m.GetChatByID(update.Message.Chat.ID, "tg")
+			if err != nil {
+				log.Printf("could not get chat by id: %v", err)
+				continue
+			}
 			if chat == nil {
-				chat = m.CreateNewChat(update.Message.Chat.ID, "tg")
-				if chat == nil {
+				chat, err = m.CreateNewChat(update.Message.Chat.ID, "tg")
+				if err != nil {
+					log.Printf("could not create a new tg chat with id %d: %v", update.Message.Chat.ID, err)
 					continue
 				}
 			}
 
 			if update.Message.IsCommand() {
 				go func() {
-					errorChan <- m.processCommand(update.Message, chat)
+					if err = m.processCommand(update.Message, chat); err != nil && err != errCommandNotFound {
+						log.Printf("error processing command: %v", err)
+					}
 				}()
 			} else { // If we got a message
 				log.Printf("[%s] %s", update.Message.From.UserName, update.Message.Text)
 				go func() {
-					errorChan <- m.processMessage(update.Message, chat)
+					if err = m.processMessage(update.Message, chat); err != nil {
+						log.Printf("error processing message: %v", err)
+					}
 				}()
 			}
 		}

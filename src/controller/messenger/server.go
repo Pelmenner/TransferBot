@@ -23,7 +23,7 @@ type Storage interface {
 }
 
 type Messenger interface {
-	SendMessage(*orm.Message, *orm.Chat) bool
+	SendMessage(*orm.Message, *orm.Chat) error
 }
 
 type ControllerServer struct {
@@ -40,7 +40,7 @@ func (c *ControllerServer) HandleNewMessage(ctx context.Context, request *contro
 	*controller.HandleMessageResponse, error) {
 	message := messageFromProto(request.Message)
 	chat := chatFromProto(request.Chat)
-	log.Print("message:", message)
+
 	subscribed, err := c.storage.FindSubscribedChats(*chat)
 	if err != nil {
 		log.Print(err)
@@ -48,8 +48,12 @@ func (c *ControllerServer) HandleNewMessage(ctx context.Context, request *contro
 	}
 	sentToAllSubscribers := true
 	for _, subscription := range subscribed {
-		if !c.messengers[subscription.Type].SendMessage(message, &subscription) {
-			c.storage.AddUnsentMessage(orm.QueuedMessage{Message: *message, Destination: subscription})
+		if err = c.messengers[subscription.Type].SendMessage(message, &subscription); err != nil {
+			log.Printf("could not send message %+v: %v", message, err)
+			if err = c.storage.AddUnsentMessage(orm.QueuedMessage{
+				Message: *message, Destination: subscription}); err != nil {
+				log.Printf("could not save unsent message: %v", err)
+			}
 			sentToAllSubscribers = false
 		}
 	}
@@ -74,8 +78,8 @@ func (c *ControllerServer) Subscribe(ctx context.Context, request *controller.Su
 		statusMessage = "could not subscribe on chat with given token"
 		return &controller.SubscribeResponse{}, fmt.Errorf("subscription failed")
 	}
-	c.messengers[subscriber.Type].SendMessage(&orm.Message{Text: statusMessage}, subscriber)
-	return &controller.SubscribeResponse{}, nil
+	err := c.messengers[subscriber.Type].SendMessage(&orm.Message{Text: statusMessage}, subscriber)
+	return &controller.SubscribeResponse{}, err
 }
 
 func (c *ControllerServer) Unsubscribe(ctx context.Context, request *controller.UnsubscribeRequest) (
@@ -91,8 +95,8 @@ func (c *ControllerServer) Unsubscribe(ctx context.Context, request *controller.
 		statusMessage = "could not unsubscribe from chat with given token"
 		return &controller.UnsubscribeResponse{}, fmt.Errorf("unsubscription failed")
 	}
-	c.messengers[subscriber.Type].SendMessage(&orm.Message{Text: statusMessage}, subscriber) // TODO: move it to messenger service
-	return &controller.UnsubscribeResponse{}, nil
+	err := c.messengers[subscriber.Type].SendMessage(&orm.Message{Text: statusMessage}, subscriber) // TODO: move it to messenger service
+	return &controller.UnsubscribeResponse{}, err
 }
 
 func (c *ControllerServer) GetChat(ctx context.Context, request *controller.GetChatRequest) (

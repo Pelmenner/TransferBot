@@ -5,7 +5,6 @@ import (
 	"github.com/Pelmenner/TransferBot/proto/controller"
 	msg "github.com/Pelmenner/TransferBot/proto/messenger"
 	"google.golang.org/grpc"
-	"log"
 )
 
 type Messenger interface {
@@ -27,65 +26,48 @@ func NewBaseMessenger(cc grpc.ClientConnInterface) *BaseMessenger {
 	return &BaseMessenger{ControllerClient: client}
 }
 
-func (bm *BaseMessenger) MessageCallback(message *msg.Message, chat *msg.Chat) {
+func (bm *BaseMessenger) MessageCallback(message *msg.Message, chat *msg.Chat) error {
 	_, err := bm.HandleNewMessage(context.TODO(), &controller.HandleMessageRequest{
 		Message: message,
 		Chat:    chat,
 	})
-	if err != nil {
-		log.Print(err)
-	}
-	// TODO: handle errors
+	return err
 }
 
-func (bm *BaseMessenger) SubscribeCallback(subscriber *msg.Chat, subscriptionToken string) {
+func (bm *BaseMessenger) SubscribeCallback(subscriber *msg.Chat, subscriptionToken string) error {
 	_, err := bm.Subscribe(context.TODO(), &controller.SubscribeRequest{
 		Chat:  subscriber,
 		Token: subscriptionToken,
 	})
-	if err != nil {
-		log.Print(err)
-	}
-	// TODO: handle errors
+	return err
 }
 
-func (bm *BaseMessenger) UnsubscribeCallback(subscriber *msg.Chat, subscriptionToken string) {
+func (bm *BaseMessenger) UnsubscribeCallback(subscriber *msg.Chat, subscriptionToken string) error {
 	_, err := bm.Unsubscribe(context.TODO(), &controller.UnsubscribeRequest{
 		Chat:  subscriber,
 		Token: subscriptionToken,
 	})
-	if err != nil {
-		log.Print(err)
-	}
-	// TODO: handle errors
+	return err
 }
 
-func (bm *BaseMessenger) GetChatByID(id int64, messenger string) *msg.Chat {
+func (bm *BaseMessenger) GetChatByID(id int64, messenger string) (*msg.Chat, error) {
 	resp, err := bm.GetChat(context.TODO(), &controller.GetChatRequest{
 		ChatID:    id,
 		Messenger: messenger,
 	})
 	if err != nil {
-		log.Printf("get chat by id error: %v", err)
-		return nil
+		return nil, err
 	}
-	if resp == nil {
-		return nil
-	}
-	return resp.Chat // TODO: handle errors
+	return resp.Chat, err
 }
 
-func (bm *BaseMessenger) CreateNewChat(id int64, messenger string) *msg.Chat {
+func (bm *BaseMessenger) CreateNewChat(id int64, messenger string) (*msg.Chat, error) {
 	resp, err := bm.CreateChat(context.TODO(), &controller.CreateChatRequest{
 		ChatID:    id,
 		Messenger: messenger,
 	})
 	if err != nil {
-		log.Printf("create new chat error: %v", err)
-		return nil
+		return nil, err
 	}
-	if resp == nil {
-		return nil
-	}
-	return resp.Chat // TODO: handle errors
+	return resp.Chat, nil
 }

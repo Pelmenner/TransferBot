@@ -48,15 +48,22 @@ func NewVKMessenger(baseMessenger *messenger.BaseMessenger) *VKMessenger {
 		if obj.Message.Action.Type != "" {
 			return
 		}
-		id := obj.Message.PeerID
-		chat := newMessenger.GetChatByID(int64(id), "vk")
+		id := int64(obj.Message.PeerID)
+		chat, err := newMessenger.GetChatByID(id, "vk")
+		if err != nil {
+			log.Printf("could not get chat by id %d: %v", id, err)
+			return
+		}
 		if chat == nil {
-			chat = baseMessenger.CreateNewChat(int64(id), "vk")
-			if chat == nil {
+			chat, err = baseMessenger.CreateNewChat(id, "vk")
+			if err != nil {
+				log.Printf("could not create chat with id %d: %v", id, err)
 				return
 			}
 		}
-		newMessenger.ProcessMessage(obj.Message, chat)
+		if err := newMessenger.ProcessMessage(obj.Message, chat); err != nil {
+			log.Printf("error processing message: %v", err)
+		}
 	})
 
 	return newMessenger
@@ -127,22 +134,23 @@ func (m *VKMessenger) getSenderName(message object.MessagesMessage) string {
 	return userResponse[0].FirstName + " " + userResponse[0].LastName
 }
 
-func (m *VKMessenger) ProcessCommand(message object.MessagesMessage, chat *msg.Chat) bool {
+var errCommandNotFound = fmt.Errorf("command not found")
+
+func (m *VKMessenger) ProcessCommand(message object.MessagesMessage, chat *msg.Chat) error {
 	if strings.HasPrefix(message.Text, "/get_token") {
-		m.SendMessage(context.TODO(), &msg.SendMessageRequest{
+		_, err := m.SendMessage(context.TODO(), &msg.SendMessageRequest{
 			Message: &msg.Message{Text: chat.Token},
 			Chat:    chat,
 		})
+		return err
 	} else if strings.HasPrefix(message.Text, "/subscribe") {
 		s := strings.Split(message.Text, " ")
-		m.SubscribeCallback(chat, s[len(s)-1])
+		return m.SubscribeCallback(chat, s[len(s)-1])
 	} else if strings.HasPrefix(message.Text, "/unsubscribe") {
 		s := strings.Split(message.Text, " ")
-		m.UnsubscribeCallback(chat, s[len(s)-1])
-	} else {
-		return false
+		return m.UnsubscribeCallback(chat, s[len(s)-1])
 	}
-	return true
+	return errCommandNotFound
 }
 
 func (m *VKMessenger) getWallAuthor(wall *object.WallWallpost) string {
@@ -166,7 +174,7 @@ func (m *VKMessenger) getWallAuthor(wall *object.WallWallpost) string {
 	return name
 }
 
-func (m *VKMessenger) processWall(wall object.WallWallpost, chat *msg.Chat) {
+func (m *VKMessenger) processWall(wall object.WallWallpost, chat *msg.Chat) error {
 	message := msg.Message{
 		Text: wall.Text,
 		Sender: &msg.Sender{
@@ -180,7 +188,7 @@ func (m *VKMessenger) processWall(wall object.WallWallpost, chat *msg.Chat) {
 			message.Attachments = m.processPhoto(attachment.Photo, chat.Id, message.Attachments)
 		}
 	}
-	m.MessageCallback(&message, chat)
+	return m.MessageCallback(&message, chat)
 }
 
 func downloadVKFile(url string, fileID int, chatID int64, fileTitle string, attachmentType string) *msg.Attachment {
@@ -227,12 +235,12 @@ func (m *VKMessenger) getFullMessage(message object.MessagesMessage) object.Mess
 	return messageResponse.Items[0]
 }
 
-func (m *VKMessenger) ProcessMessage(message object.MessagesMessage, chat *msg.Chat) {
+func (m *VKMessenger) ProcessMessage(message object.MessagesMessage, chat *msg.Chat) error {
 	if message.IsCropped {
 		message = m.getFullMessage(message)
 	}
-	if m.ProcessCommand(message, chat) {
-		return
+	if err := m.ProcessCommand(message, chat); err != nil && err != errCommandNotFound {
+		return err
 	}
 	standardMessage := msg.Message{
 		Text: message.Text,
@@ -255,22 +263,28 @@ func (m *VKMessenger) ProcessMessage(message object.MessagesMessage, chat *msg.C
 	if message.ReplyMessage != nil {
 		standardMessage.Text += "\nin reply to..."
 	}
-	m.MessageCallback(&standardMessage, chat)
+	err := m.MessageCallback(&standardMessage, chat)
 	for _, wall := range walls {
-		m.processWall(*wall, chat)
+		err = m.processWall(*wall, chat)
+		return err
 	}
 	if message.ReplyMessage != nil {
-		m.ProcessMessage(*message.ReplyMessage, chat)
+		if err = m.ProcessMessage(*message.ReplyMessage, chat); err != nil {
+			return err
+		}
 	}
 	for _, message := range message.FwdMessages {
-		m.ProcessMessage(message, chat)
+		_ = m.ProcessMessage(message, chat)
 	}
+	return nil
 }
 
 func (m *VKMessenger) Run(ctx context.Context) {
 	restartLimiter := rate.NewLimiter(rate.Limit(config.LongPollRestartMaxRate), 1)
 	for {
-		restartLimiter.Wait(ctx)
+		if err := restartLimiter.Wait(ctx); err != nil {
+			log.Printf("error waiting for limiter: %v", err)
+		}
 		if err := m.longPoll.Run(); err != nil {
 			log.Print("VK longpoll error:", err)
 		}

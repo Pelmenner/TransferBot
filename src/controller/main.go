@@ -50,8 +50,11 @@ func repeatedProcessUnsentMessages(db *orm.DB, messengers map[string]Messenger) 
 		} else {
 			for _, queuedMessage := range messages {
 				destination := &queuedMessage.Destination
-				if !messengers[destination.Type].SendMessage(&queuedMessage.Message, destination) {
-					db.AddUnsentMessage(queuedMessage)
+				if err = messengers[destination.Type].SendMessage(&queuedMessage.Message, destination); err != nil {
+					log.Printf("could not send message: %v", err)
+					if err := db.AddUnsentMessage(queuedMessage); err != nil {
+						log.Printf("could not save unsent message %v", err)
+					}
 				}
 			}
 		}
@@ -61,7 +64,11 @@ func repeatedProcessUnsentMessages(db *orm.DB, messengers map[string]Messenger) 
 
 func main() {
 	db := orm.NewDB()
-	defer db.Close()
+	defer func() {
+		if err := db.Close(); err != nil {
+			log.Printf("could not close db: %v", err)
+		}
+	}()
 
 	messengers, err := initMessengers()
 	if err != nil {
