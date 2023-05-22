@@ -129,7 +129,7 @@ func (m *TGMessenger) senderToString(sender *msg.Sender) string {
 	if sender.Name == "" {
 		return ""
 	}
-	return fmt.Sprintf("<b><u>%s (%s):</u></b>", sender.Name, sender.Chat)
+	return fmt.Sprintf("<b><u>%s (%s):</u></b>", sender.Name, sender.Chat.Name)
 }
 
 func (m *TGMessenger) ProcessMediaGroup(message *tgbotapi.Message, chat *msg.Chat) {

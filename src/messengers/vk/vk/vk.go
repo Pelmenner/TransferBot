@@ -76,7 +76,7 @@ func (m *VKMessenger) senderToString(sender *msg.Sender) string {
 	if sender.Name == "" {
 		return ""
 	}
-	return fmt.Sprintf("%s (%s):", sender.Name, sender.Chat)
+	return fmt.Sprintf("%s (%s):", sender.Name, sender.Chat.Name)
 }
 
 func (m *VKMessenger) SendMessage(ctx context.Context, request *msg.SendMessageRequest) (
