@@ -23,7 +23,7 @@ type IndexedAttachment struct {
 type TGMessenger struct {
 	*messenger.BaseMessenger
 	tg                 *tgbotapi.BotAPI
-	mediaGroups        Map[string, chan IndexedAttachment]
+	mediaGroups        Map[string, chan *IndexedAttachment]
 	mediaGroupLoadings Map[string, *sync.WaitGroup]
 }
 
@@ -35,13 +35,13 @@ func NewTGMessenger(baseMessenger *messenger.BaseMessenger) *TGMessenger {
 	return &TGMessenger{
 		BaseMessenger:      baseMessenger,
 		tg:                 bot,
-		mediaGroups:        NewMap[string, chan IndexedAttachment](),
+		mediaGroups:        NewMap[string, chan *IndexedAttachment](),
 		mediaGroupLoadings: NewMap[string, *sync.WaitGroup](),
 	}
 }
 
-func (m *TGMessenger) SendMessage(ctx context.Context, request *msg.SendMessageRequest) (*msg.SendMessageResponse, error) {
-	success, tried := m.sendSpecialAttachmentType(*request.GetMessage(), request.Chat, "photo", "photo", ReqOptional)
+func (m *TGMessenger) SendMessage(_ context.Context, request *msg.SendMessageRequest) (*msg.SendMessageResponse, error) {
+	success, tried := m.sendSpecialAttachmentType(request.Message, request.Chat, "photo", "photo", ReqOptional)
 	if !success {
 		return &msg.SendMessageResponse{
 			Success: false,
@@ -52,7 +52,7 @@ func (m *TGMessenger) SendMessage(ctx context.Context, request *msg.SendMessageR
 		requirement = ReqNever
 	}
 
-	success, _ = m.sendSpecialAttachmentType(*request.GetMessage(), request.Chat, "doc", "document", requirement)
+	success, _ = m.sendSpecialAttachmentType(request.Message, request.Chat, "doc", "document", requirement)
 	return &msg.SendMessageResponse{
 		Success: success,
 	}, nil
@@ -95,13 +95,13 @@ const (
 //	or sendText is optional and there message is already not empty
 //
 // Returns result (success) of sending and a value showing need to do it (was message not empty?)
-func (m *TGMessenger) sendSpecialAttachmentType(message msg.Message, chat *msg.Chat, attachmentType,
+func (m *TGMessenger) sendSpecialAttachmentType(message *msg.Message, chat *msg.Chat, attachmentType,
 	attachmentFullType string, sendText Requirement) (success bool, needToSend bool) {
 	text := ""
 	if sendText != ReqNever {
 		text = m.senderToString(message.Sender) + "\n" + tgbotapi.EscapeText("HTML", message.Text)
 	}
-	media := getPreparedMediaList(&message, attachmentFullType, attachmentType, text)
+	media := getPreparedMediaList(message, attachmentFullType, attachmentType, text)
 	if len(media) == 0 && sendText != ReqAlways {
 		return true, false
 	}
@@ -151,7 +151,7 @@ func (m *TGMessenger) ProcessMediaGroup(message *tgbotapi.Message, chat *msg.Cha
 		Sender:      getTGSender(message),
 		Attachments: []*msg.Attachment{},
 	}
-	var indexedAttachments []IndexedAttachment
+	var indexedAttachments []*IndexedAttachment
 	for attachment := range mediaGroup {
 		indexedAttachments = append(indexedAttachments, attachment)
 	}
@@ -159,8 +159,8 @@ func (m *TGMessenger) ProcessMediaGroup(message *tgbotapi.Message, chat *msg.Cha
 		return indexedAttachments[i].ID < indexedAttachments[j].ID
 	})
 	for _, indexedAttachment := range indexedAttachments {
-		attachment := indexedAttachment.Attachment
-		standardMessage.Attachments = append(standardMessage.Attachments, &attachment)
+		attachment := &indexedAttachment.Attachment
+		standardMessage.Attachments = append(standardMessage.Attachments, attachment)
 	}
 	if err := m.MessageCallback(&standardMessage, chat); err != nil {
 		log.Printf("message callback error: %v", err)
@@ -208,7 +208,7 @@ func (m *TGMessenger) addMediaGroupAttachment(fileID, fileName, fileType, mediaG
 		return err
 	}
 
-	m.mediaGroups.Get(mediaGroupID) <- IndexedAttachment{
+	m.mediaGroups.Get(mediaGroupID) <- &IndexedAttachment{
 		Attachment: msg.Attachment{Type: fileType, Url: url},
 		ID:         messageID,
 	}
@@ -267,7 +267,7 @@ func (m *TGMessenger) processSingleMessage(message *tgbotapi.Message, chat *msg.
 
 func (m *TGMessenger) processPartOfGroupMessage(message *tgbotapi.Message, chat *msg.Chat) error {
 	if !m.mediaGroups.Contains(message.MediaGroupID) {
-		m.mediaGroups.Set(message.MediaGroupID, make(chan IndexedAttachment))
+		m.mediaGroups.Set(message.MediaGroupID, make(chan *IndexedAttachment))
 		m.mediaGroupLoadings.Set(message.MediaGroupID, &sync.WaitGroup{})
 		// media group is split into different messages, we need to catch them all before processing it
 		go m.ProcessMediaGroup(message, chat)
@@ -318,15 +318,18 @@ func (m *TGMessenger) processCommand(message *tgbotapi.Message, chat *msg.Chat) 
 	case "get_token":
 		return m.processGetToken(message, chat)
 	case "subscribe":
-		return m.SubscribeCallback(chat, message.CommandArguments())
+		return m.processSubscribe(message, chat)
 	case "unsubscribe":
-		return m.UnsubscribeCallback(chat, message.CommandArguments())
+		return m.processUnsubscribe(message, chat)
 	}
 	return errCommandNotFound
 }
 
 func (m *TGMessenger) processGetToken(message *tgbotapi.Message, chat *msg.Chat) error {
 	token, err := m.getChatToken(chat.Id)
+	if err != nil {
+		return err
+	}
 	response := tgbotapi.NewMessage(message.Chat.ID, token)
 	_, err = m.tg.Send(response)
 	return err
