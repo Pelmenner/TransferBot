@@ -100,8 +100,8 @@ func initMessengers() (map[string]Messenger, error) {
 }
 
 func newHTTPListener() net.Listener {
-	port := os.Getenv("PORT")
-	lis, err := net.Listen("tcp", fmt.Sprintf(":%s", port))
+
+	lis, err := net.Listen("tcp", fmt.Sprintf(":%s", config.ServerPort))
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}

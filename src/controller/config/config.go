@@ -13,3 +13,6 @@ var MessengerAddresses = map[string]string{
 	"vk": os.Getenv("VK_SERVICE_HOST"),
 	"tg": os.Getenv("TG_SERVICE_HOST"),
 }
+
+var ServerPort = os.Getenv("PORT")
+var DBConnectString = os.Getenv("DB_CONNECT_STRING")

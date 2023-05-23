@@ -25,8 +25,7 @@ type VKMessenger struct {
 }
 
 func NewVKMessenger(baseMessenger *messenger.BaseMessenger) *VKMessenger {
-	token := os.Getenv("VK_TOKEN")
-	vk := api.NewVK(token)
+	vk := api.NewVK(Config.Token)
 	group, err := vk.GroupsGetByID(nil)
 	if err != nil {
 		log.Fatal(err)
@@ -280,7 +279,7 @@ func (m *VKMessenger) ProcessMessage(message object.MessagesMessage, chat *msg.C
 }
 
 func (m *VKMessenger) Run(ctx context.Context) {
-	restartLimiter := rate.NewLimiter(rate.Limit(config.LongPollRestartMaxRate), 1)
+	restartLimiter := rate.NewLimiter(rate.Limit(Config.LongPollRestartMaxRate), 1)
 	for {
 		if err := restartLimiter.Wait(ctx); err != nil {
 			log.Printf("error waiting for limiter: %v", err)

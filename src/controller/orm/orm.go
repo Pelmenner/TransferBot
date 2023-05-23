@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"os"
 	"time"
 
 	_ "github.com/jackc/pgx/v4/stdlib"
@@ -48,7 +47,7 @@ type DB struct {
 }
 
 func NewDB() *DB {
-	db, err := sql.Open("pgx", os.Getenv("DB_CONNECT_STRING"))
+	db, err := sql.Open("pgx", config.DBConnectString)
 	if err != nil {
 		log.Fatal("could not connect to database:", err)
 	}

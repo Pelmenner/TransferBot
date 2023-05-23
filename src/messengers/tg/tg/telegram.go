@@ -28,7 +28,7 @@ type TGMessenger struct {
 }
 
 func NewTGMessenger(baseMessenger *messenger.BaseMessenger) *TGMessenger {
-	bot, err := tgbotapi.NewBotAPI(config.Token)
+	bot, err := tgbotapi.NewBotAPI(Config.Token)
 	if err != nil {
 		log.Panic(err)
 	}
@@ -137,7 +137,7 @@ func (m *TGMessenger) ProcessMediaGroup(message *tgbotapi.Message, chat *msg.Cha
 	// we don't know when it ends, so just wait fixed time
 	mediaGroupID := message.MediaGroupID
 	go func() {
-		time.Sleep(config.MediaGroupWaitTime)
+		time.Sleep(Config.MediaGroupWaitTime)
 		loadingWaiter := m.mediaGroupLoadings.Get(mediaGroupID)
 		mediaGroup := m.mediaGroups.Get(mediaGroupID)
 		loadingWaiter.Wait()
@@ -344,7 +344,7 @@ func (m *TGMessenger) processUnsubscribe(message *tgbotapi.Message, chat *msg.Ch
 }
 
 func (m *TGMessenger) Run(ctx context.Context) {
-	requestRateLimiter := rate.NewLimiter(rate.Limit(1/config.TGSleepIntervalSec), 1)
+	requestRateLimiter := rate.NewLimiter(rate.Limit(1/Config.TGSleepIntervalSec), 1)
 	lastUpdateID := -1
 
 	for {
@@ -353,7 +353,7 @@ func (m *TGMessenger) Run(ctx context.Context) {
 			return
 		}
 		u := tgbotapi.NewUpdate(lastUpdateID + 1)
-		u.Timeout = config.TGBotAPITimeoutSec
+		u.Timeout = Config.TGBotAPITimeoutSec
 		updates := m.tg.GetUpdatesChan(u)
 
 		for update := range updates {
