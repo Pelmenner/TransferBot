@@ -4,9 +4,8 @@ go 1.18
 
 require (
 	github.com/Pelmenner/TransferBot/proto v0.0.0
-	github.com/SevereCloud/vksdk/v2 v2.14.0
-	github.com/go-telegram-bot-api/telegram-bot-api/v5 v5.5.1
 	github.com/jackc/pgx/v4 v4.17.0
+	google.golang.org/grpc v1.55.0
 )
 
 require (
@@ -14,7 +13,6 @@ require (
 	golang.org/x/net v0.8.0 // indirect
 	golang.org/x/sys v0.6.0 // indirect
 	google.golang.org/genproto v0.0.0-20230306155012-7f2fa6fef1f4 // indirect
-	google.golang.org/grpc v1.55.0 // indirect
 	google.golang.org/protobuf v1.30.0 // indirect
 )
 
@@ -26,12 +24,8 @@ require (
 	github.com/jackc/pgproto3/v2 v2.3.1 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20200714003250-2b9c44734f2b // indirect
 	github.com/jackc/pgtype v1.12.0 // indirect
-	github.com/klauspost/compress v1.15.6 // indirect
-	github.com/vmihailenco/msgpack/v5 v5.3.5 // indirect
-	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
 	golang.org/x/crypto v0.0.0-20220722155217-630584e8d5aa // indirect
 	golang.org/x/text v0.8.0 // indirect
-	golang.org/x/time v0.3.0
 )
 
 replace github.com/Pelmenner/TransferBot/proto v0.0.0 => ../proto

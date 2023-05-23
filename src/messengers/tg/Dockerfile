@@ -20,7 +20,6 @@ COPY messengers/tg/*.go messengers/tg/
 
 WORKDIR messengers/tg
 RUN mkdir -p /usr/local/bin/
-RUN go mod tidy
 RUN go build -v -o /usr/local/bin/app
 
 CMD ["app"]

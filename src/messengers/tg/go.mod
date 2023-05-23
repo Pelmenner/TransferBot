@@ -20,4 +20,5 @@ require (
 )
 
 replace github.com/Pelmenner/TransferBot/messenger v0.0.0 => ../messenger
+
 replace github.com/Pelmenner/TransferBot/proto v0.0.0 => ../../proto
