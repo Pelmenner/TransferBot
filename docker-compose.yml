@@ -1,7 +1,7 @@
 version: "3.7"
 services:
   controller:
-    container_name: controller
+    container_name: trabsferbot-controller
     build:
       context: src
       dockerfile: ./controller/Dockerfile
@@ -20,7 +20,7 @@ services:
     restart: on-failure
 
   messenger-vk:
-    container_name: messenger-vk
+    container_name: trabsferbot-messenger-vk
     build:
       context: src
       dockerfile: ./messengers/vk/Dockerfile
@@ -36,7 +36,7 @@ services:
       - controller
 
   messenger-tg:
-    container_name: messenger-tg
+    container_name: trabsferbot-messenger-tg
     build:
       context: src
       dockerfile: ./messengers/tg/Dockerfile
@@ -52,7 +52,7 @@ services:
       - controller
 
   db:
-    container_name: postgres
+    container_name: trabsferbot-postgres
     image: postgres:alpine
     environment:
       - POSTGRES_USER=$DB_USERNAME

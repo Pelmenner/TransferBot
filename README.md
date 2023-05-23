@@ -28,6 +28,9 @@ In order for bot to run, you need to specify some environmental variables:
 * `VK_TOKEN` - VK bot token
 * `DB_USERNAME` - database username
 * `DB_PASSWORD` - database password
+* `CONTROLLER_PORT` - controller service port
+* `VK_PORT` - VK service port
+* `TG_PORT` - TG service port
 
 You can also define `MIGRATE_DB` environmental variable in order to run database migrations before starting bot
 
@@ -47,3 +50,13 @@ In order to achieve that, one will need to build & run bot with following enviro
 * `DB_CONNECT_STRING` - database connection string specifically for selected database
 
 Migrations are managed by [Goose](https://github.com/pressly/Goose), thus one should make use of it to set up database.
+
+## DEBUG
+
+For debugging controller service, the following command may be used:
+
+```shell
+docker-compose -f docker-compose.yml -f docker-compose.debug.yml -p transferbot-debug up -d --build
+```
+
+Debugger will be available at port 40000 and can be accessed with some interface (e.g. through Goland's remote debugger).

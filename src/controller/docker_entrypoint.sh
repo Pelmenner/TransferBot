@@ -11,4 +11,8 @@ if ! [ -z $MIGRATE_DB ]; then
     goose -dir ./migrations postgres "$DB_CONNECT_STRING" up
 fi
 
-/transfer_bot
+if ! [ -z "${DEBUG:-}" ];  then
+    dlv --listen=:$DEBUG_PORT --headless=true --api-version=2 --continue --accept-multiclient exec /transfer_bot
+else
+    /transfer_bot
+fi
