@@ -14,7 +14,7 @@ func DownloadFile(filePath string, url string) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { err = resp.Body.Close() }()
 
 	// Create the file
 	dirName := filepath.Dir(filePath)
@@ -28,7 +28,7 @@ func DownloadFile(filePath string, url string) error {
 	if err != nil {
 		return err
 	}
-	defer out.Close()
+	defer func() { err = out.Close() }()
 
 	// Write the body to file
 	_, err = io.Copy(out, resp.Body)

@@ -2,6 +2,7 @@ package messenger
 
 import (
 	"context"
+	"fmt"
 	"github.com/Pelmenner/TransferBot/proto/controller"
 	msg "github.com/Pelmenner/TransferBot/proto/messenger"
 	"google.golang.org/grpc"
@@ -70,4 +71,18 @@ func (bm *BaseMessenger) CreateNewChat(id int64, messenger string) (*msg.Chat, e
 		return nil, err
 	}
 	return resp.Chat, nil
+}
+
+func (bm *BaseMessenger) GetOrCreateChat(id int64, messenger string) (*msg.Chat, error) {
+	chat, err := bm.GetChatByID(id, messenger)
+	if err != nil {
+		return nil, fmt.Errorf("could not get %s chat by id: %v", messenger, err)
+	}
+	if chat == nil {
+		chat, err = bm.CreateNewChat(id, messenger)
+		if err != nil {
+			return nil, fmt.Errorf("could not create a new %s chat with id %d: %v", messenger, id, err)
+		}
+	}
+	return chat, nil
 }
