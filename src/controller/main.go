@@ -26,7 +26,7 @@ func deleteAttachment(attachment *orm.Attachment) {
 	}
 }
 
-func repeatedFileCleanup(db *orm.DB) { // Why is it still unused?
+func repeatedFileCleanup(db *orm.DB) {
 	for {
 		attachments, err := db.GetUnusedAttachments()
 		if err != nil {
@@ -80,6 +80,7 @@ func main() {
 	log.Printf("created grpc server")
 
 	go repeatedProcessUnsentMessages(db, messengers)
+	go repeatedFileCleanup(db)
 
 	if err := server.Serve(listener); err != nil {
 		log.Fatalf("failed to serve: %s", err)
