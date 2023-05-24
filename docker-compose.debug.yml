@@ -1,0 +1,11 @@
+version: "3.7"
+services:
+  controller:
+    build:
+      args:
+        - DEBUG=TRUE
+        - DEBUG_PORT=40000
+    ports:
+      - '40000:40000'
+    security_opt:
+      - "seccomp:unconfined"

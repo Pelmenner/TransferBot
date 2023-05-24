@@ -1,4 +1,4 @@
-package utils
+package tg
 
 import (
 	"io"
@@ -35,7 +35,7 @@ func DownloadFile(filePath string, url string) error {
 	return err
 }
 
-// thread-safe typed map wrapper
+// Map is thread-safe typed map wrapper
 type Map[K comparable, V any] struct {
 	mx sync.RWMutex
 	mp map[K]V

@@ -1,0 +1,41 @@
+syntax = "proto3";
+package messenger;
+option go_package="github.com/Pelmenner/TransferBot/proto/messenger";
+
+service ChatService {
+  rpc SendMessage(SendMessageRequest) returns (SendMessageResponse) {}
+}
+
+message SendMessageRequest {
+    Message message = 1;
+    Chat chat = 2;
+}
+
+message Attachment {
+    string type = 1;
+    string url = 2;
+}
+
+message Sender {
+    string name = 1;
+    Chat chat = 2;
+}
+
+message Chat {
+    int64 id = 1;
+    string type = 2;
+    string name = 3;
+    string token = 4;
+    int32 rowID = 5;
+}
+
+message Message {
+    string text = 1;
+    Sender sender = 2;
+    repeated Attachment attachments = 3;
+}
+
+message SendMessageResponse {
+    bool success = 1;
+    optional string error = 2;
+}

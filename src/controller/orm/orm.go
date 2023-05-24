@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log"
 	"time"
 
 	_ "github.com/jackc/pgx/v4/stdlib"
@@ -41,7 +42,19 @@ type QueuedMessage struct {
 	Destination Chat
 }
 
-func transact(db *sql.DB, txOpts *sql.TxOptions, txFunc func(*sql.Tx) error) (err error) {
+type DB struct {
+	*sql.DB
+}
+
+func NewDB() *DB {
+	db, err := sql.Open("pgx", config.DBConnectString)
+	if err != nil {
+		log.Fatal("could not connect to database:", err)
+	}
+	return &DB{db}
+}
+
+func (db *DB) transact(txOpts *sql.TxOptions, txFunc func(*sql.Tx) error) (err error) {
 	tx, err := db.BeginTx(context.TODO(), txOpts)
 	if err != nil {
 		return err
@@ -63,7 +76,7 @@ func transact(db *sql.DB, txOpts *sql.TxOptions, txFunc func(*sql.Tx) error) (er
 }
 
 // findSubscribedChats returns all chats subscribed on the given one
-func FindSubscribedChats(db *sql.DB, chat Chat) ([]Chat, error) {
+func (db *DB) FindSubscribedChats(chat Chat) ([]Chat, error) {
 	rows, err := db.Query(`SELECT chat_id, token, chat_type, Chats.internal_id
 	FROM Subscriptions JOIN Chats ON Subscriptions.destination_chat = Chats.internal_id
 	WHERE source_chat = $1`, chat.RowID)
@@ -93,7 +106,7 @@ func generateToken(chatID int64, chatType string) string {
 }
 
 // addChat creates new chat entry with given id in messenger and type
-func AddChat(db *sql.DB, chatID int64, chatType string) (*Chat, error) {
+func (db *DB) AddChat(chatID int64, chatType string) (*Chat, error) {
 	token := generateToken(chatID, chatType)
 
 	res := db.QueryRow("INSERT INTO Chats VALUES ($1, $2, $3) RETURNING internal_id",
@@ -114,7 +127,7 @@ func AddChat(db *sql.DB, chatID int64, chatType string) (*Chat, error) {
 }
 
 // getChat returns chat object with given id in messenger
-func GetChat(db *sql.DB, chatID int64, chatType string) (*Chat, error) {
+func (db *DB) GetChat(chatID int64, chatType string) (*Chat, error) {
 	res := Chat{ID: chatID, Type: chatType}
 	row := db.QueryRow(`SELECT token, internal_id FROM Chats
 	WHERE chat_id = $1 AND chat_type = $2`, &chatID, &chatType)
@@ -131,8 +144,8 @@ func GetChat(db *sql.DB, chatID int64, chatType string) (*Chat, error) {
 }
 
 // addUnsentMessage adds message to send later
-func AddUnsentMessage(db *sql.DB, message QueuedMessage) error {
-	err := transact(db, &sql.TxOptions{
+func (db *DB) AddUnsentMessage(message QueuedMessage) error {
+	err := db.transact(&sql.TxOptions{
 		Isolation: sql.LevelSerializable,
 		ReadOnly:  false,
 	},
@@ -185,9 +198,9 @@ func getMessageAttachments(tx *sql.Tx, messageRowID int, attachments []*Attachme
 }
 
 // getUnsentMessages returns all messages to send and deletes them from db
-func GetUnsentMessages(db *sql.DB, maxCnt int) ([]QueuedMessage, error) {
+func (db *DB) GetUnsentMessages(maxCnt int) ([]QueuedMessage, error) {
 	res := []QueuedMessage{}
-	err := transact(db, &sql.TxOptions{
+	err := db.transact(&sql.TxOptions{
 		Isolation: sql.LevelSerializable,
 		ReadOnly:  false,
 	},
@@ -251,8 +264,8 @@ func getChatRowIDByToken(tx *sql.Tx, token string) (int, error) {
 }
 
 // Subscribes proveded chat on another with given token.
-func Subscribe(db *sql.DB, subscriber *Chat, subscriptionToken string) error {
-	err := transact(db, &sql.TxOptions{
+func (db *DB) Subscribe(subscriber *Chat, subscriptionToken string) error {
+	err := db.transact(&sql.TxOptions{
 		Isolation: sql.LevelSerializable,
 		ReadOnly:  false,
 	},
@@ -274,8 +287,8 @@ func Subscribe(db *sql.DB, subscriber *Chat, subscriptionToken string) error {
 }
 
 // Unsubscribes provided chat from another with given token.
-func Unsubscribe(db *sql.DB, subscriber *Chat, subscriptionToken string) error {
-	err := transact(db, &sql.TxOptions{
+func (db *DB) Unsubscribe(subscriber *Chat, subscriptionToken string) error {
+	err := db.transact(&sql.TxOptions{
 		Isolation: sql.LevelSerializable,
 		ReadOnly:  false,
 	},
@@ -306,9 +319,9 @@ func Unsubscribe(db *sql.DB, subscriber *Chat, subscriptionToken string) error {
 }
 
 // getUnusedAttachments returns all attachments which will be never sent anymore and deletes them
-func GetUnusedAttachments(db *sql.DB) ([]*Attachment, error) {
+func (db *DB) GetUnusedAttachments() ([]*Attachment, error) {
 	res := []*Attachment{}
-	err := transact(db, &sql.TxOptions{
+	err := db.transact(&sql.TxOptions{
 		Isolation: sql.LevelSerializable,
 		ReadOnly:  false,
 	},
