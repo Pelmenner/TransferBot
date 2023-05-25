@@ -236,7 +236,7 @@ func (db *DB) GetUnsentMessages(maxCnt int) ([]QueuedMessage, error) {
 
 			for _, id := range messageRowIDs {
 				_, err := tx.Exec(`UPDATE Attachments SET parent_message = NULL 
-						WHERE parent_message = $0`, &id)
+						WHERE parent_message = $1`, &id)
 				if err != nil {
 					return err
 				}
