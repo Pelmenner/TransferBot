@@ -1,5 +1,6 @@
 .env
 .vscode/
+.idea
 db.sqlite3
 downloads/
 data/
