@@ -34,13 +34,17 @@ func (m *Messenger) Run(ctx context.Context) {
 				continue
 			}
 
-			chat, err := m.GetOrCreateChat(update.Message.Chat.ID, "tg")
-			if err != nil || chat == nil {
-				log.Printf("getOrCreate chat failed: %v", err)
-				continue
-			}
+			chat := chatFromMessage(update.Message)
 			go m.processUpdate(&update, chat)
 		}
+	}
+}
+
+func chatFromMessage(message *tgbotapi.Message) *msg.Chat {
+	return &msg.Chat{
+		Id:   message.Chat.ID,
+		Type: "tg",
+		Name: message.Chat.Title,
 	}
 }
 
@@ -72,7 +76,7 @@ func (m *Messenger) processCommand(message *tgbotapi.Message, chat *msg.Chat) er
 }
 
 func (m *Messenger) processGetToken(message *tgbotapi.Message, chat *msg.Chat) error {
-	token, err := m.getChatToken(chat.Id)
+	token, err := m.GetChatToken(chat.Id, "tg")
 	if err != nil {
 		return err
 	}
@@ -252,10 +256,4 @@ func getTGSender(message *tgbotapi.Message) *msg.Sender {
 
 func getTGUserName(user *tgbotapi.User) string {
 	return fmt.Sprintf("%s %s", user.FirstName, user.LastName)
-}
-
-func chatFromMessage(message *tgbotapi.Message) *msg.Chat {
-	return &msg.Chat{
-		Name: message.Chat.Title,
-	}
 }

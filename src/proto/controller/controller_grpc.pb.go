@@ -22,7 +22,7 @@ const (
 	Controller_HandleNewMessage_FullMethodName = "/controller.Controller/HandleNewMessage"
 	Controller_Subscribe_FullMethodName        = "/controller.Controller/Subscribe"
 	Controller_Unsubscribe_FullMethodName      = "/controller.Controller/Unsubscribe"
-	Controller_GetChat_FullMethodName          = "/controller.Controller/GetChat"
+	Controller_GetChatToken_FullMethodName     = "/controller.Controller/GetChatToken"
 	Controller_CreateChat_FullMethodName       = "/controller.Controller/CreateChat"
 )
 
@@ -33,7 +33,7 @@ type ControllerClient interface {
 	HandleNewMessage(ctx context.Context, in *HandleMessageRequest, opts ...grpc.CallOption) (*HandleMessageResponse, error)
 	Subscribe(ctx context.Context, in *SubscribeRequest, opts ...grpc.CallOption) (*SubscribeResponse, error)
 	Unsubscribe(ctx context.Context, in *UnsubscribeRequest, opts ...grpc.CallOption) (*UnsubscribeResponse, error)
-	GetChat(ctx context.Context, in *GetChatRequest, opts ...grpc.CallOption) (*GetChatResponse, error)
+	GetChatToken(ctx context.Context, in *GetChatTokenRequest, opts ...grpc.CallOption) (*GetChatTokenResponse, error)
 	CreateChat(ctx context.Context, in *CreateChatRequest, opts ...grpc.CallOption) (*CreateChatResponse, error)
 }
 
@@ -72,9 +72,9 @@ func (c *controllerClient) Unsubscribe(ctx context.Context, in *UnsubscribeReque
 	return out, nil
 }
 
-func (c *controllerClient) GetChat(ctx context.Context, in *GetChatRequest, opts ...grpc.CallOption) (*GetChatResponse, error) {
-	out := new(GetChatResponse)
-	err := c.cc.Invoke(ctx, Controller_GetChat_FullMethodName, in, out, opts...)
+func (c *controllerClient) GetChatToken(ctx context.Context, in *GetChatTokenRequest, opts ...grpc.CallOption) (*GetChatTokenResponse, error) {
+	out := new(GetChatTokenResponse)
+	err := c.cc.Invoke(ctx, Controller_GetChatToken_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -97,7 +97,7 @@ type ControllerServer interface {
 	HandleNewMessage(context.Context, *HandleMessageRequest) (*HandleMessageResponse, error)
 	Subscribe(context.Context, *SubscribeRequest) (*SubscribeResponse, error)
 	Unsubscribe(context.Context, *UnsubscribeRequest) (*UnsubscribeResponse, error)
-	GetChat(context.Context, *GetChatRequest) (*GetChatResponse, error)
+	GetChatToken(context.Context, *GetChatTokenRequest) (*GetChatTokenResponse, error)
 	CreateChat(context.Context, *CreateChatRequest) (*CreateChatResponse, error)
 	mustEmbedUnimplementedControllerServer()
 }
@@ -115,8 +115,8 @@ func (UnimplementedControllerServer) Subscribe(context.Context, *SubscribeReques
 func (UnimplementedControllerServer) Unsubscribe(context.Context, *UnsubscribeRequest) (*UnsubscribeResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Unsubscribe not implemented")
 }
-func (UnimplementedControllerServer) GetChat(context.Context, *GetChatRequest) (*GetChatResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GetChat not implemented")
+func (UnimplementedControllerServer) GetChatToken(context.Context, *GetChatTokenRequest) (*GetChatTokenResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetChatToken not implemented")
 }
 func (UnimplementedControllerServer) CreateChat(context.Context, *CreateChatRequest) (*CreateChatResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CreateChat not implemented")
@@ -188,20 +188,20 @@ func _Controller_Unsubscribe_Handler(srv interface{}, ctx context.Context, dec f
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Controller_GetChat_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(GetChatRequest)
+func _Controller_GetChatToken_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetChatTokenRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(ControllerServer).GetChat(ctx, in)
+		return srv.(ControllerServer).GetChatToken(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: Controller_GetChat_FullMethodName,
+		FullMethod: Controller_GetChatToken_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ControllerServer).GetChat(ctx, req.(*GetChatRequest))
+		return srv.(ControllerServer).GetChatToken(ctx, req.(*GetChatTokenRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -244,8 +244,8 @@ var Controller_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _Controller_Unsubscribe_Handler,
 		},
 		{
-			MethodName: "GetChat",
-			Handler:    _Controller_GetChat_Handler,
+			MethodName: "GetChatToken",
+			Handler:    _Controller_GetChatToken_Handler,
 		},
 		{
 			MethodName: "CreateChat",

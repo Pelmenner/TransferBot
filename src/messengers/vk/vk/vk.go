@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/Pelmenner/TransferBot/messenger"
+	msg "github.com/Pelmenner/TransferBot/proto/messenger"
 	"github.com/SevereCloud/vksdk/v2/api"
 	"github.com/SevereCloud/vksdk/v2/events"
 	"github.com/SevereCloud/vksdk/v2/longpoll-bot"
@@ -45,20 +46,12 @@ func (m *Messenger) initLongPoll(groupID int) error {
 		if obj.Message.Action.Type != "" {
 			return
 		}
-		id := int64(obj.Message.PeerID)
-		chat, err := m.GetChatByID(id, "vk")
-		if err != nil {
-			log.Printf("could not get chat by id %d: %v", id, err)
-			return
+		chat := msg.Chat{
+			Id:   int64(obj.Message.PeerID),
+			Type: "vk",
+			Name: "vk",
 		}
-		if chat == nil {
-			chat, err = m.CreateNewChat(id, "vk")
-			if err != nil {
-				log.Printf("could not create chat with id %d: %v", id, err)
-				return
-			}
-		}
-		if err := m.processMessage(obj.Message, chat); err != nil {
+		if err := m.processMessage(obj.Message, &chat); err != nil {
 			log.Printf("error processing message: %v", err)
 		}
 	})

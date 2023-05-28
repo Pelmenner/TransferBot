@@ -18,7 +18,8 @@ type Storage interface {
 	GetUnsentMessages(maxCnt int) ([]orm.QueuedMessage, error)
 	AddUnsentMessage(message orm.QueuedMessage) error
 	GetChat(chatID int64, chatType string) (*orm.Chat, error)
-	AddChat(chatID int64, chatType string) (*orm.Chat, error)
+	GetChatToken(chatID int64, chatType string) (string, error)
+	CreateChat(chat *orm.Chat) (*orm.Chat, error)
 	FindSubscribedChats(chat orm.Chat) ([]orm.Chat, error)
 }
 
@@ -99,28 +100,13 @@ func (c *ControllerServer) Unsubscribe(ctx context.Context, request *controller.
 	return &controller.UnsubscribeResponse{}, err
 }
 
-func (c *ControllerServer) GetChat(ctx context.Context, request *controller.GetChatRequest) (
-	*controller.GetChatResponse, error) {
-	chat, err := c.storage.GetChat(request.ChatID, request.Messenger)
+func (c *ControllerServer) GetChatToken(ctx context.Context, request *controller.GetChatTokenRequest) (
+	*controller.GetChatTokenResponse, error) {
+	token, err := c.storage.GetChatToken(request.ChatID, request.Messenger)
 	if err != nil {
-		log.Print(err)
-		return &controller.GetChatResponse{}, err
+		return &controller.GetChatTokenResponse{}, fmt.Errorf("could not find the chat: %v", err)
 	}
-	return &controller.GetChatResponse{
-		Chat: chatToProto(chat),
-	}, nil
-}
-
-func (c *ControllerServer) CreateChat(ctx context.Context, request *controller.CreateChatRequest) (
-	*controller.CreateChatResponse, error) {
-	chat, err := c.storage.AddChat(request.ChatID, request.Messenger)
-	if err != nil {
-		log.Print(err)
-		return &controller.CreateChatResponse{}, err
-	}
-	return &controller.CreateChatResponse{
-		Chat: chatToProto(chat),
-	}, nil
+	return &controller.GetChatTokenResponse{Token: token}, nil
 }
 
 func deleteAttachment(attachment *orm.Attachment) {
@@ -154,11 +140,9 @@ func chatFromProto(chat *messenger.Chat) *orm.Chat {
 		return nil
 	}
 	return &orm.Chat{
-		ID:    chat.Id,
-		RowID: chat.RowID,
-		Type:  chat.Type,
-		Token: chat.Token,
-		//TODO: create a Name field
+		ID:   chat.Id,
+		Type: chat.Type,
+		Name: chat.Name,
 	}
 }
 

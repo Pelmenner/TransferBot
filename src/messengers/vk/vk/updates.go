@@ -106,8 +106,18 @@ func (m *Messenger) processCommand(message object.MessagesMessage, chat *msg.Cha
 }
 
 func (m *Messenger) processGetToken(_ object.MessagesMessage, chat *msg.Chat) error {
-	_, err := m.SendMessage(context.TODO(), &msg.SendMessageRequest{
-		Message: &msg.Message{Text: chat.Token},
+	token, err := m.GetChatToken(chat.Id, chat.Type)
+	if err != nil {
+		_, errSend := m.SendMessage(context.TODO(), &msg.SendMessageRequest{
+			Message: &msg.Message{Text: "Could not get chat token"},
+		})
+		if errSend != nil {
+			return fmt.Errorf("could not get chat token (%v) and send a failure response (%v)", err, errSend)
+		}
+		return err
+	}
+	_, err = m.SendMessage(context.TODO(), &msg.SendMessageRequest{
+		Message: &msg.Message{Text: token},
 		Chat:    chat,
 	})
 	return err

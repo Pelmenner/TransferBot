@@ -7,7 +7,7 @@ service Controller {
   rpc HandleNewMessage(HandleMessageRequest) returns (HandleMessageResponse) {}
   rpc Subscribe(SubscribeRequest) returns (SubscribeResponse) {}
   rpc Unsubscribe(UnsubscribeRequest) returns (UnsubscribeResponse) {}
-  rpc GetChat(GetChatRequest) returns (GetChatResponse) {}
+  rpc GetChatToken(GetChatTokenRequest) returns (GetChatTokenResponse) {}
   rpc CreateChat(CreateChatRequest) returns (CreateChatResponse) {}
 }
 
@@ -38,15 +38,6 @@ message UnsubscribeResponse {
 
 }
 
-message GetChatRequest {
-  int64 chatID = 1;
-  string messenger = 2;
-}
-
-message GetChatResponse {
-  optional messenger.Chat chat = 1;
-}
-
 message CreateChatRequest {
   int64 chatID = 1;
   string messenger = 2;
@@ -54,4 +45,13 @@ message CreateChatRequest {
 
 message CreateChatResponse {
   optional messenger.Chat chat = 1;
+}
+
+message GetChatTokenRequest {
+  int64 chatID = 1;
+  string messenger = 2;
+}
+
+message GetChatTokenResponse {
+  string token = 1;
 }

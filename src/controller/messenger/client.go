@@ -45,11 +45,9 @@ func chatToProto(chat *orm.Chat) *msg.Chat {
 		return nil
 	}
 	return &msg.Chat{
-		Id:    chat.ID,
-		RowID: chat.RowID,
-		Name:  chat.Type, // TODO: pass an actual name
-		Type:  chat.Type,
-		Token: chat.Token,
+		Id:   chat.ID,
+		Name: chat.Type, // TODO: pass an actual name
+		Type: chat.Type,
 	}
 }
 

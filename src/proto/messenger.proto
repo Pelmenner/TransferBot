@@ -25,8 +25,6 @@ message Chat {
     int64 id = 1;
     string type = 2;
     string name = 3;
-    string token = 4;
-    int32 rowID = 5;
 }
 
 message Message {

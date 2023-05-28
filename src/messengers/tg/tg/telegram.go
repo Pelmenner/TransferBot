@@ -32,11 +32,3 @@ func NewMessenger(baseMessenger *messenger.BaseMessenger) *Messenger {
 		mediaGroupLoadings: NewMap[string, *sync.WaitGroup](),
 	}
 }
-
-func (m *Messenger) getChatToken(chatID int64) (string, error) {
-	chat, err := m.GetChatByID(chatID, "tg")
-	if err != nil {
-		return "", err
-	}
-	return chat.Token, nil
-}
