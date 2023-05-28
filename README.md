@@ -29,8 +29,8 @@ In order for bot to run, you need to specify some environmental variables:
 * `DB_USERNAME` - database username
 * `DB_PASSWORD` - database password
 * `CONTROLLER_PORT` - controller service port
-* `VK_PORT` - VK service port
-* `TG_PORT` - TG service port
+* `VK_SERVICE_PORT` - VK service port
+* `TG_SERVICE_PORT ` - TG service port
 
 You can also define `MIGRATE_DB` environmental variable in order to run database migrations before starting bot
 
