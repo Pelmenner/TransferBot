@@ -42,7 +42,7 @@ func (m *Messenger) initLongPoll(groupID int) error {
 	}
 	m.longPoll = lp
 	lp.MessageNew(func(ctx context.Context, obj events.MessageNewObject) {
-		log.Printf("new event: %+v", obj)
+		m.logUpdate(&obj)
 		if obj.Message.Action.Type != "" {
 			return
 		}
@@ -56,4 +56,14 @@ func (m *Messenger) initLongPoll(groupID int) error {
 		}
 	})
 	return nil
+}
+
+func (m *Messenger) logUpdate(update *events.MessageNewObject) {
+	if update.Message.Action.Type != "" {
+		return // TODO: when we start processing other events, they should be logged too
+	}
+	message := &update.Message
+	const template = "new message: conversation message id: %d; chat id: %d; attachments: %d; forwarded: %d; reply: %t"
+	log.Printf(template, message.ConversationMessageID, message.PeerID, len(message.Attachments),
+		len(message.FwdMessages), message.ReplyMessage != nil)
 }

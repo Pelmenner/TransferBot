@@ -44,6 +44,7 @@ func (m *Messenger) Run(ctx context.Context) {
 }
 
 func (m *Messenger) processUpdate(update *tgbotapi.Update, chat *msg.Chat) {
+	m.logUpdate(update)
 	if update.Message.IsCommand() {
 		if err := m.processCommand(update.Message, chat); err != nil && err != errCommandNotFound {
 			log.Printf("error processing command: %v", err)
@@ -53,6 +54,18 @@ func (m *Messenger) processUpdate(update *tgbotapi.Update, chat *msg.Chat) {
 		if err := m.processMessage(update.Message, chat); err != nil {
 			log.Printf("error processing message: %v", err)
 		}
+	}
+}
+
+func (m *Messenger) logUpdate(update *tgbotapi.Update) {
+	message := update.Message
+	if message.IsCommand() {
+		log.Printf("new command: chat id: %d; message id: %d", message.Chat.ID, message.MessageID)
+	} else {
+		const template = "new message: chat id: %d; message id: %d; " +
+			"media group id: %s; photo: %t; document: %t; reply: %t"
+		log.Printf(template, message.Chat.ID, message.MessageID, message.MediaGroupID,
+			message.Photo != nil, message.Document != nil, message.ReplyToMessage != nil)
 	}
 }
 
