@@ -1,10 +1,11 @@
 syntax = "proto3";
-package controller;
 import "messenger.proto";
+import "google/protobuf/empty.proto";
+package controller;
 option go_package="github.com/Pelmenner/TransferBot/proto/controller";
 
 service Controller {
-  rpc HandleNewMessage(HandleMessageRequest) returns (HandleMessageResponse) {}
+  rpc HandleNewMessage(HandleMessageRequest) returns (google.protobuf.Empty) {}
   rpc Subscribe(SubscribeRequest) returns (SubscribeResponse) {}
   rpc Unsubscribe(UnsubscribeRequest) returns (UnsubscribeResponse) {}
   rpc GetChatToken(GetChatTokenRequest) returns (GetChatTokenResponse) {}
@@ -16,17 +17,12 @@ message HandleMessageRequest {
   messenger.Chat chat = 2;
 }
 
-message HandleMessageResponse {
-
-}
-
 message SubscribeRequest {
   messenger.Chat chat = 1;
   string token = 2;
 }
 
 message SubscribeResponse {
-
 }
 
 message UnsubscribeRequest {
@@ -35,7 +31,6 @@ message UnsubscribeRequest {
 }
 
 message UnsubscribeResponse {
-
 }
 
 message CreateChatRequest {

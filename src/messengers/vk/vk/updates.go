@@ -3,7 +3,10 @@ package vk
 import (
 	"context"
 	"fmt"
+	"github.com/Pelmenner/TransferBot/messenger"
 	"golang.org/x/time/rate"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"log"
 	"path/filepath"
 	"strings"
@@ -95,32 +98,51 @@ func (m *Messenger) getSenderName(message object.MessagesMessage) string {
 var errCommandNotFound = fmt.Errorf("command not found")
 
 func (m *Messenger) processCommand(message object.MessagesMessage, chat *msg.Chat) error {
+	var err error
 	if strings.HasPrefix(message.Text, "/get_token") {
-		return m.processGetToken(message, chat)
+		err = m.processGetToken(message, chat)
 	} else if strings.HasPrefix(message.Text, "/subscribe") {
-		return m.processSubscribe(message, chat)
+		err = m.processSubscribe(message, chat)
 	} else if strings.HasPrefix(message.Text, "/unsubscribe") {
-		return m.processUnsubscribe(message, chat)
+		err = m.processUnsubscribe(message, chat)
+	} else {
+		return errCommandNotFound
 	}
-	return errCommandNotFound
+	return m.processCommandResult(err, chat)
+}
+
+// processCommandResult checks if there is an error that needs to be sent to the user and tries to send it.
+// If the error was internal, it is added to the returned error
+//
+// It might have some messenger-specific logic in the future, so it should not be moved to baseMessenger.
+func (m *Messenger) processCommandResult(err error, chat *msg.Chat) error {
+	// If err is nil or not a grpc error, it should be returned immediately
+	if status.Code(err) == codes.OK {
+		return err
+	}
+	_, sendErr := m.SendMessage(context.TODO(), &msg.SendMessageRequest{
+		Message: &msg.Message{Text: status.Convert(err).Message()},
+		Chat:    chat,
+	})
+	if !messenger.IsUserInputError(err) {
+		if sendErr != nil {
+			return fmt.Errorf("could not process command: %v, could send error %v", err, sendErr)
+		}
+		return err
+	}
+	return sendErr
 }
 
 func (m *Messenger) processGetToken(_ object.MessagesMessage, chat *msg.Chat) error {
 	token, err := m.GetChatToken(chat.Id, chat.Type)
 	if err != nil {
-		_, errSend := m.SendMessage(context.TODO(), &msg.SendMessageRequest{
-			Message: &msg.Message{Text: "Could not get chat token"},
-		})
-		if errSend != nil {
-			return fmt.Errorf("could not get chat token (%v) and send a failure response (%v)", err, errSend)
-		}
 		return err
 	}
-	_, err = m.SendMessage(context.TODO(), &msg.SendMessageRequest{
+	_, errSend := m.SendMessage(context.TODO(), &msg.SendMessageRequest{
 		Message: &msg.Message{Text: token},
 		Chat:    chat,
 	})
-	return err
+	return errSend
 }
 
 func (m *Messenger) processSubscribe(message object.MessagesMessage, chat *msg.Chat) error {

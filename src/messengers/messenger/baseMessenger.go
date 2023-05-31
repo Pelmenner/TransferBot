@@ -3,6 +3,8 @@ package messenger
 import (
 	"context"
 	"fmt"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/Pelmenner/TransferBot/proto/controller"
 	msg "github.com/Pelmenner/TransferBot/proto/messenger"
@@ -52,6 +54,12 @@ func (bm *BaseMessenger) GetChatToken(id int64, messenger string) (string, error
 		return "", err
 	}
 	return resp.Token, nil
+}
+
+// IsUserInputError checks if the error was caused by invalid user input and not by internal server issues
+func IsUserInputError(err error) bool {
+	code := status.Code(err)
+	return code == codes.NotFound || code == codes.OutOfRange || code == codes.InvalidArgument
 }
 
 func (bm *BaseMessenger) SenderToString(sender *msg.Sender) string {

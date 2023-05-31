@@ -4,6 +4,9 @@ import (
 	"context"
 	msg "github.com/Pelmenner/TransferBot/proto/messenger"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"github.com/golang/protobuf/ptypes/empty"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"log"
 )
 
@@ -15,12 +18,10 @@ const (
 	ReqNever
 )
 
-func (m *Messenger) SendMessage(_ context.Context, request *msg.SendMessageRequest) (*msg.SendMessageResponse, error) {
+func (m *Messenger) SendMessage(_ context.Context, request *msg.SendMessageRequest) (*empty.Empty, error) {
 	success, tried := m.sendSpecialAttachmentType(request.Message, request.Chat, "photo", "photo", ReqOptional)
 	if !success {
-		return &msg.SendMessageResponse{
-			Success: false,
-		}, nil
+		return &empty.Empty{}, status.Error(codes.Unknown, "could not send the message")
 	}
 	requirement := ReqAlways
 	if tried {
@@ -28,9 +29,10 @@ func (m *Messenger) SendMessage(_ context.Context, request *msg.SendMessageReque
 	}
 
 	success, _ = m.sendSpecialAttachmentType(request.Message, request.Chat, "doc", "document", requirement)
-	return &msg.SendMessageResponse{
-		Success: success,
-	}, nil
+	if !success {
+		return &empty.Empty{}, status.Error(codes.Unknown, "could not send the message")
+	}
+	return &empty.Empty{}, nil
 }
 
 // sendSpecialAttachmentType sends all attachments of given type in a message;

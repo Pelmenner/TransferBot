@@ -3,14 +3,18 @@ package vk
 import (
 	"context"
 	"fmt"
-	msg "github.com/Pelmenner/TransferBot/proto/messenger"
-	"github.com/SevereCloud/vksdk/v2/api/params"
 	"log"
 	"os"
+
+	msg "github.com/Pelmenner/TransferBot/proto/messenger"
+	"github.com/SevereCloud/vksdk/v2/api/params"
+	"github.com/golang/protobuf/ptypes/empty"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 func (m *Messenger) SendMessage(_ context.Context, request *msg.SendMessageRequest) (
-	*msg.SendMessageResponse, error) {
+	*empty.Empty, error) {
 	message := request.Message
 	destinationChat := request.Chat
 	messageBuilder := params.NewMessagesSendBuilder()
@@ -42,14 +46,13 @@ func (m *Messenger) SendMessage(_ context.Context, request *msg.SendMessageReque
 			attachmentString += fmt.Sprintf("%s%d_%d,", attachment.Type,
 				response.Doc.OwnerID, response.Doc.ID)
 		}
-
 	}
 	messageBuilder.Attachment(attachmentString)
 
 	_, err := m.vk.MessagesSend(messageBuilder.Params)
 	if err != nil {
 		log.Print(err)
-		return &msg.SendMessageResponse{}, err
+		return &empty.Empty{}, status.Error(codes.Unknown, "could not send the message")
 	}
-	return &msg.SendMessageResponse{}, nil
+	return &empty.Empty{}, nil
 }

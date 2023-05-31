@@ -8,6 +8,7 @@ package controller
 
 import (
 	context "context"
+	empty "github.com/golang/protobuf/ptypes/empty"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
@@ -30,7 +31,7 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type ControllerClient interface {
-	HandleNewMessage(ctx context.Context, in *HandleMessageRequest, opts ...grpc.CallOption) (*HandleMessageResponse, error)
+	HandleNewMessage(ctx context.Context, in *HandleMessageRequest, opts ...grpc.CallOption) (*empty.Empty, error)
 	Subscribe(ctx context.Context, in *SubscribeRequest, opts ...grpc.CallOption) (*SubscribeResponse, error)
 	Unsubscribe(ctx context.Context, in *UnsubscribeRequest, opts ...grpc.CallOption) (*UnsubscribeResponse, error)
 	GetChatToken(ctx context.Context, in *GetChatTokenRequest, opts ...grpc.CallOption) (*GetChatTokenResponse, error)
@@ -45,8 +46,8 @@ func NewControllerClient(cc grpc.ClientConnInterface) ControllerClient {
 	return &controllerClient{cc}
 }
 
-func (c *controllerClient) HandleNewMessage(ctx context.Context, in *HandleMessageRequest, opts ...grpc.CallOption) (*HandleMessageResponse, error) {
-	out := new(HandleMessageResponse)
+func (c *controllerClient) HandleNewMessage(ctx context.Context, in *HandleMessageRequest, opts ...grpc.CallOption) (*empty.Empty, error) {
+	out := new(empty.Empty)
 	err := c.cc.Invoke(ctx, Controller_HandleNewMessage_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -94,7 +95,7 @@ func (c *controllerClient) CreateChat(ctx context.Context, in *CreateChatRequest
 // All implementations must embed UnimplementedControllerServer
 // for forward compatibility
 type ControllerServer interface {
-	HandleNewMessage(context.Context, *HandleMessageRequest) (*HandleMessageResponse, error)
+	HandleNewMessage(context.Context, *HandleMessageRequest) (*empty.Empty, error)
 	Subscribe(context.Context, *SubscribeRequest) (*SubscribeResponse, error)
 	Unsubscribe(context.Context, *UnsubscribeRequest) (*UnsubscribeResponse, error)
 	GetChatToken(context.Context, *GetChatTokenRequest) (*GetChatTokenResponse, error)
@@ -106,7 +107,7 @@ type ControllerServer interface {
 type UnimplementedControllerServer struct {
 }
 
-func (UnimplementedControllerServer) HandleNewMessage(context.Context, *HandleMessageRequest) (*HandleMessageResponse, error) {
+func (UnimplementedControllerServer) HandleNewMessage(context.Context, *HandleMessageRequest) (*empty.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method HandleNewMessage not implemented")
 }
 func (UnimplementedControllerServer) Subscribe(context.Context, *SubscribeRequest) (*SubscribeResponse, error) {

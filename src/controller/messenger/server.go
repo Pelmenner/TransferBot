@@ -3,9 +3,11 @@ package messenger
 import (
 	"Pelmenner/TransferBot/orm"
 	"context"
-	"fmt"
 	"github.com/Pelmenner/TransferBot/proto/controller"
 	"github.com/Pelmenner/TransferBot/proto/messenger"
+	"github.com/golang/protobuf/ptypes/empty"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"log"
 	"os"
 	"path/filepath"
@@ -38,14 +40,14 @@ func NewControllerServer(storage Storage, messengers map[string]Messenger) contr
 }
 
 func (c *ControllerServer) HandleNewMessage(ctx context.Context, request *controller.HandleMessageRequest) (
-	*controller.HandleMessageResponse, error) {
+	*empty.Empty, error) {
 	message := messageFromProto(request.Message)
 	chat := chatFromProto(request.Chat)
 
 	subscribed, err := c.storage.FindSubscribedChats(*chat)
 	if err != nil {
-		log.Print(err)
-		return &controller.HandleMessageResponse{}, err
+		log.Printf("could not find subscribed chats: %v", err)
+		return &empty.Empty{}, status.Error(codes.Unknown, "something went wrong")
 	}
 	sentToAllSubscribers := true
 	for _, subscription := range subscribed {
@@ -63,7 +65,7 @@ func (c *ControllerServer) HandleNewMessage(ctx context.Context, request *contro
 			deleteAttachment(attachment)
 		}
 	}
-	return &controller.HandleMessageResponse{}, nil
+	return &empty.Empty{}, nil
 }
 
 func (c *ControllerServer) Subscribe(ctx context.Context, request *controller.SubscribeRequest) (
@@ -71,40 +73,36 @@ func (c *ControllerServer) Subscribe(ctx context.Context, request *controller.Su
 	subscriber := chatFromProto(request.Chat)
 	subscriptionToken := request.Token
 	log.Printf("subscribe %+v on chat with token %s", subscriber, subscriptionToken)
-	var statusMessage string
-	if err := c.storage.Subscribe(subscriber, subscriptionToken); err == nil {
-		statusMessage = "successfully subscribed!"
-	} else {
-		log.Print(err)
-		statusMessage = "could not subscribe on chat with given token"
-		return &controller.SubscribeResponse{}, fmt.Errorf("subscription failed")
+	err := c.storage.Subscribe(subscriber, subscriptionToken)
+
+	if err != nil {
+		log.Printf("subscription failed: %v", err)
+		return &controller.SubscribeResponse{}, status.Error(400, "could not subscribe on chat with given token")
 	}
-	err := c.messengers[subscriber.Type].SendMessage(&orm.Message{Text: statusMessage}, subscriber)
-	return &controller.SubscribeResponse{}, err
+	return &controller.SubscribeResponse{}, nil
 }
 
 func (c *ControllerServer) Unsubscribe(ctx context.Context, request *controller.UnsubscribeRequest) (
 	*controller.UnsubscribeResponse, error) {
 	subscriber := chatFromProto(request.Chat)
 	subscriptionToken := request.Token
+
 	log.Printf("unsubscribe chat %+v from chat with token %s", subscriber, subscriptionToken)
-	var statusMessage string
-	if err := c.storage.Unsubscribe(subscriber, subscriptionToken); err == nil {
-		statusMessage = "successfully unsubscribed!"
-	} else {
-		log.Print(err)
-		statusMessage = "could not unsubscribe from chat with given token"
-		return &controller.UnsubscribeResponse{}, fmt.Errorf("unsubscription failed")
+	err := c.storage.Unsubscribe(subscriber, subscriptionToken)
+
+	if err != nil {
+		// TODO: add error differentiation
+		log.Printf("unsubscription failed: %v", err)
+		return &controller.UnsubscribeResponse{}, status.Error(codes.Unknown, "could not unsubscribe from chat with given token")
 	}
-	err := c.messengers[subscriber.Type].SendMessage(&orm.Message{Text: statusMessage}, subscriber) // TODO: move it to messenger service
-	return &controller.UnsubscribeResponse{}, err
+	return &controller.UnsubscribeResponse{}, nil
 }
 
 func (c *ControllerServer) GetChatToken(ctx context.Context, request *controller.GetChatTokenRequest) (
 	*controller.GetChatTokenResponse, error) {
 	token, err := c.storage.GetChatToken(request.ChatID, request.Messenger)
 	if err != nil {
-		return &controller.GetChatTokenResponse{}, fmt.Errorf("could not find the chat: %v", err)
+		return &controller.GetChatTokenResponse{}, status.Error(codes.NotFound, "could not find the chat")
 	}
 	return &controller.GetChatTokenResponse{Token: token}, nil
 }

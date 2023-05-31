@@ -3,9 +3,12 @@ package tg
 import (
 	"context"
 	"fmt"
+	"github.com/Pelmenner/TransferBot/messenger"
 	msg "github.com/Pelmenner/TransferBot/proto/messenger"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"golang.org/x/time/rate"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"log"
 	"path/filepath"
 	"sort"
@@ -64,15 +67,41 @@ func (m *Messenger) processUpdate(update *tgbotapi.Update, chat *msg.Chat) {
 var errCommandNotFound = fmt.Errorf("command not found")
 
 func (m *Messenger) processCommand(message *tgbotapi.Message, chat *msg.Chat) error {
+	var err error
 	switch message.Command() {
 	case "get_token":
-		return m.processGetToken(message, chat)
+		err = m.processGetToken(message, chat)
 	case "subscribe":
-		return m.processSubscribe(message, chat)
+		err = m.processSubscribe(message, chat)
 	case "unsubscribe":
-		return m.processUnsubscribe(message, chat)
+		err = m.processUnsubscribe(message, chat)
+	default:
+		return errCommandNotFound
 	}
-	return errCommandNotFound
+	if status.Code(err) == codes.OK {
+		return err
+	}
+	return m.processCommandResult(err, chat)
+}
+
+// processCommandResult checks if there is an error that needs to be sent to the user and tries to send it.
+// If the error was internal, it is added to the returned error
+//
+// It might have some messenger-specific logic in the future, so it should not be moved to baseMessenger.
+func (m *Messenger) processCommandResult(err error, chat *msg.Chat) error {
+	// If err is nil or not a grpc error, it should be returned immediately
+	if status.Code(err) == codes.OK {
+		return err
+	}
+	response := tgbotapi.NewMessage(chat.Id, status.Convert(err).Message())
+	_, sendErr := m.tg.Send(response)
+	if !messenger.IsUserInputError(err) {
+		if sendErr != nil {
+			return fmt.Errorf("could not process command: %v, could not send error %v", err, sendErr)
+		}
+		return err
+	}
+	return sendErr
 }
 
 func (m *Messenger) processGetToken(message *tgbotapi.Message, chat *msg.Chat) error {
