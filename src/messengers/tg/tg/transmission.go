@@ -2,7 +2,6 @@ package tg
 
 import (
 	"context"
-	"fmt"
 	msg "github.com/Pelmenner/TransferBot/proto/messenger"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"log"
@@ -44,7 +43,7 @@ func (m *Messenger) sendSpecialAttachmentType(message *msg.Message, chat *msg.Ch
 	attachmentFullType string, sendText Requirement) (success bool, needToSend bool) {
 	text := ""
 	if sendText != ReqNever {
-		text = m.senderToString(message.Sender) + "\n" + tgbotapi.EscapeText("HTML", message.Text)
+		text = m.SenderToString(message.Sender) + "\n" + tgbotapi.EscapeText("HTML", message.Text)
 	}
 	media := getPreparedMediaList(message, attachmentFullType, attachmentType, text)
 	if len(media) == 0 && sendText != ReqAlways {
@@ -91,11 +90,4 @@ func getPreparedMediaList(message *msg.Message, attachmentFullType, attachmentTy
 		})
 	}
 	return media
-}
-
-func (m *Messenger) senderToString(sender *msg.Sender) string {
-	if sender.Name == "" {
-		return ""
-	}
-	return fmt.Sprintf("<b><u>%s (%s):</u></b>", sender.Name, sender.Chat.Name)
 }

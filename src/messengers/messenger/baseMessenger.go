@@ -2,6 +2,8 @@ package messenger
 
 import (
 	"context"
+	"fmt"
+
 	"github.com/Pelmenner/TransferBot/proto/controller"
 	msg "github.com/Pelmenner/TransferBot/proto/messenger"
 	"google.golang.org/grpc"
@@ -50,4 +52,14 @@ func (bm *BaseMessenger) GetChatToken(id int64, messenger string) (string, error
 		return "", err
 	}
 	return resp.Token, nil
+}
+
+func (bm *BaseMessenger) SenderToString(sender *msg.Sender) string {
+	if sender == nil || sender.Name == "" {
+		return ""
+	}
+	if sender.Chat == nil {
+		return sender.Name
+	}
+	return fmt.Sprintf("%s (%s):", sender.Name, sender.Chat.Name)
 }

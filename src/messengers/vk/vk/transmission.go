@@ -14,7 +14,7 @@ func (m *Messenger) SendMessage(_ context.Context, request *msg.SendMessageReque
 	message := request.Message
 	destinationChat := request.Chat
 	messageBuilder := params.NewMessagesSendBuilder()
-	messageBuilder.Message(m.senderToString(message.Sender) + "\n" + message.Text)
+	messageBuilder.Message(m.SenderToString(message.Sender) + "\n" + message.Text)
 	messageBuilder.RandomID(0)
 	messageBuilder.PeerID(int(destinationChat.Id))
 
@@ -52,14 +52,4 @@ func (m *Messenger) SendMessage(_ context.Context, request *msg.SendMessageReque
 		return &msg.SendMessageResponse{}, err
 	}
 	return &msg.SendMessageResponse{}, nil
-}
-
-func (m *Messenger) senderToString(sender *msg.Sender) string {
-	if sender == nil {
-		return ""
-	}
-	if sender.Name == "" {
-		return ""
-	}
-	return fmt.Sprintf("%s (%s):", sender.Name, sender.Chat.Name)
 }
