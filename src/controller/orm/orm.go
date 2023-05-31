@@ -76,10 +76,10 @@ func (db *DB) transact(txOpts *sql.TxOptions, txFunc func(*sql.Tx) error) (err e
 
 	defer func() {
 		if p := recover(); p != nil {
-			tx.Rollback()
+			err = tx.Rollback()
 			panic(p)
 		} else if err != nil {
-			tx.Rollback()
+			err = tx.Rollback()
 		} else {
 			err = tx.Commit()
 		}
@@ -101,7 +101,7 @@ func (db *DB) FindSubscribedChats(chat Chat) ([]Chat, error) {
 		return []Chat{}, err
 	}
 
-	res := []Chat{}
+	var res []Chat
 	for rows.Next() {
 		buf := Chat{complete: true}
 		err := rows.Scan(&buf.ID, &buf.Type, &buf.Name, &buf.internalID)
@@ -244,7 +244,7 @@ func getMessageAttachments(tx *sql.Tx, messageRowID int, attachments []*Attachme
 
 // GetUnsentMessages returns all messages to send and deletes them from db
 func (db *DB) GetUnsentMessages(maxCnt int) ([]QueuedMessage, error) {
-	res := []QueuedMessage{}
+	var res []QueuedMessage
 	err := db.transact(&sql.TxOptions{
 		Isolation: sql.LevelSerializable,
 		ReadOnly:  false,
@@ -257,7 +257,7 @@ func (db *DB) GetUnsentMessages(maxCnt int) ([]QueuedMessage, error) {
 				return err
 			}
 
-			messageRowIDs := []int{}
+			var messageRowIDs []int
 			// TODO: remove queries from loop
 			for rows.Next() {
 				message := QueuedMessage{}
@@ -371,7 +371,7 @@ func (db *DB) Unsubscribe(subscriber *Chat, subscriptionToken string) error {
 
 // GetUnusedAttachments returns all attachments which will never be sent anymore and deletes them
 func (db *DB) GetUnusedAttachments() ([]*Attachment, error) {
-	res := []*Attachment{}
+	var res []*Attachment
 	err := db.transact(&sql.TxOptions{
 		Isolation: sql.LevelSerializable,
 		ReadOnly:  false,
@@ -385,7 +385,7 @@ func (db *DB) GetUnusedAttachments() ([]*Attachment, error) {
 				return err
 			}
 
-			attachmentRowIDs := []int{}
+			var attachmentRowIDs []int
 			for rows.Next() {
 				attachment := Attachment{}
 				rowID := -1

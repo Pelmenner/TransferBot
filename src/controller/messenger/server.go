@@ -39,7 +39,7 @@ func NewControllerServer(storage Storage, messengers map[string]Messenger) contr
 	return &ControllerServer{storage: storage, messengers: messengers}
 }
 
-func (c *ControllerServer) HandleNewMessage(ctx context.Context, request *controller.HandleMessageRequest) (
+func (c *ControllerServer) HandleNewMessage(_ context.Context, request *controller.HandleMessageRequest) (
 	*empty.Empty, error) {
 	message := messageFromProto(request.Message)
 	chat := chatFromProto(request.Chat)
@@ -68,7 +68,7 @@ func (c *ControllerServer) HandleNewMessage(ctx context.Context, request *contro
 	return &empty.Empty{}, nil
 }
 
-func (c *ControllerServer) Subscribe(ctx context.Context, request *controller.SubscribeRequest) (
+func (c *ControllerServer) Subscribe(_ context.Context, request *controller.SubscribeRequest) (
 	*controller.SubscribeResponse, error) {
 	subscriber := chatFromProto(request.Chat)
 	subscriptionToken := request.Token
@@ -82,7 +82,7 @@ func (c *ControllerServer) Subscribe(ctx context.Context, request *controller.Su
 	return &controller.SubscribeResponse{}, nil
 }
 
-func (c *ControllerServer) Unsubscribe(ctx context.Context, request *controller.UnsubscribeRequest) (
+func (c *ControllerServer) Unsubscribe(_ context.Context, request *controller.UnsubscribeRequest) (
 	*controller.UnsubscribeResponse, error) {
 	subscriber := chatFromProto(request.Chat)
 	subscriptionToken := request.Token
@@ -98,7 +98,7 @@ func (c *ControllerServer) Unsubscribe(ctx context.Context, request *controller.
 	return &controller.UnsubscribeResponse{}, nil
 }
 
-func (c *ControllerServer) GetChatToken(ctx context.Context, request *controller.GetChatTokenRequest) (
+func (c *ControllerServer) GetChatToken(_ context.Context, request *controller.GetChatTokenRequest) (
 	*controller.GetChatTokenResponse, error) {
 	token, err := c.storage.GetChatToken(request.ChatID, request.Messenger)
 	if err != nil {
