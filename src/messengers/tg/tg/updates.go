@@ -30,6 +30,7 @@ func (m *Messenger) Run(ctx context.Context) {
 		updates := m.tg.GetUpdatesChan(u)
 
 		for update := range updates {
+			update := update // hack to allow referencing elements in a loop
 			if update.UpdateID > lastUpdateID {
 				lastUpdateID = update.UpdateID
 			}
@@ -50,7 +51,6 @@ func (m *Messenger) processUpdate(update *tgbotapi.Update, chat *msg.Chat) {
 			log.Printf("error processing command: %v", err)
 		}
 	} else { // If we got a message
-		log.Printf("[%s] %s", update.Message.From.UserName, update.Message.Text)
 		if err := m.processMessage(update.Message, chat); err != nil {
 			log.Printf("error processing message: %v", err)
 		}
