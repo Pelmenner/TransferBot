@@ -17,10 +17,10 @@ func DownloadFile(filePath string, url string) error {
 
 	// Create the file
 	dirName := filepath.Dir(filePath)
-	if _, serr := os.Stat(dirName); serr != nil {
-		merr := os.MkdirAll(dirName, os.ModePerm)
-		if merr != nil {
-			panic(merr)
+	if _, dirErr := os.Stat(dirName); dirErr != nil {
+		dirErr = os.MkdirAll(dirName, os.ModePerm)
+		if dirErr != nil {
+			return dirErr
 		}
 	}
 	out, err := os.Create(filePath)

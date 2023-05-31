@@ -7,18 +7,18 @@ import (
 	"google.golang.org/grpc"
 )
 
-type MessengerClient struct {
+type Client struct {
 	msg.ChatServiceClient
 }
 
-func NewMessengerClient(cc grpc.ClientConnInterface) *MessengerClient {
+func NewMessengerClient(cc grpc.ClientConnInterface) *Client {
 	internalClient := msg.NewChatServiceClient(cc)
-	return &MessengerClient{
+	return &Client{
 		internalClient,
 	}
 }
 
-func (m *MessengerClient) SendMessage(message *orm.Message, chat *orm.Chat) error {
+func (m *Client) SendMessage(message *orm.Message, chat *orm.Chat) error {
 	pbMessage := messageToProto(message)
 	pbChat := chatToProto(chat)
 	_, err := m.ChatServiceClient.SendMessage(context.TODO(), &msg.SendMessageRequest{

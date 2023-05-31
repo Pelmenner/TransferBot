@@ -58,8 +58,9 @@ func (m *Messenger) processMessage(message object.MessagesMessage, chat *msg.Cha
 	}
 	err := m.MessageCallback(&standardMessage, chat)
 	for _, wall := range walls {
-		err = m.processWall(*wall, chat)
-		return err
+		if err = m.processWall(*wall, chat); err != nil {
+			return err
+		}
 	}
 	if message.ReplyMessage != nil {
 		if err = m.processMessage(*message.ReplyMessage, chat); err != nil {

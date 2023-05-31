@@ -43,14 +43,6 @@ func (m *Messenger) Run(ctx context.Context) {
 	}
 }
 
-func chatFromMessage(message *tgbotapi.Message) *msg.Chat {
-	return &msg.Chat{
-		Id:   message.Chat.ID,
-		Type: "tg",
-		Name: message.Chat.Title,
-	}
-}
-
 func (m *Messenger) processUpdate(update *tgbotapi.Update, chat *msg.Chat) {
 	if update.Message.IsCommand() {
 		if err := m.processCommand(update.Message, chat); err != nil && err != errCommandNotFound {
@@ -77,9 +69,6 @@ func (m *Messenger) processCommand(message *tgbotapi.Message, chat *msg.Chat) er
 		err = m.processUnsubscribe(message, chat)
 	default:
 		return errCommandNotFound
-	}
-	if status.Code(err) == codes.OK {
-		return err
 	}
 	return m.processCommandResult(err, chat)
 }
@@ -281,6 +270,14 @@ func getTGSender(message *tgbotapi.Message) *msg.Sender {
 		sender.Chat.Name = "tg"
 	}
 	return &sender
+}
+
+func chatFromMessage(message *tgbotapi.Message) *msg.Chat {
+	return &msg.Chat{
+		Id:   message.Chat.ID,
+		Type: "tg",
+		Name: message.Chat.Title,
+	}
 }
 
 func getTGUserName(user *tgbotapi.User) string {
