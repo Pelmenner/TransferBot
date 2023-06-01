@@ -7,18 +7,18 @@ import (
 	"google.golang.org/grpc"
 )
 
-type MessengerClient struct {
+type Client struct {
 	msg.ChatServiceClient
 }
 
-func NewMessengerClient(cc grpc.ClientConnInterface) *MessengerClient {
+func NewMessengerClient(cc grpc.ClientConnInterface) *Client {
 	internalClient := msg.NewChatServiceClient(cc)
-	return &MessengerClient{
+	return &Client{
 		internalClient,
 	}
 }
 
-func (m *MessengerClient) SendMessage(message *orm.Message, chat *orm.Chat) error {
+func (m *Client) SendMessage(message *orm.Message, chat *orm.Chat) error {
 	pbMessage := messageToProto(message)
 	pbChat := chatToProto(chat)
 	_, err := m.ChatServiceClient.SendMessage(context.TODO(), &msg.SendMessageRequest{
@@ -45,11 +45,9 @@ func chatToProto(chat *orm.Chat) *msg.Chat {
 		return nil
 	}
 	return &msg.Chat{
-		Id:    chat.ID,
-		RowID: chat.RowID,
-		Name:  chat.Type, // TODO: pass an actual name
-		Type:  chat.Type,
-		Token: chat.Token,
+		Id:   chat.ID,
+		Name: chat.Type, // TODO: pass an actual name
+		Type: chat.Type,
 	}
 }
 

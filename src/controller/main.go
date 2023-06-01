@@ -15,52 +15,7 @@ import (
 	"time"
 )
 
-func deleteAttachment(attachment *orm.Attachment) {
-	err := os.Remove(attachment.URL)
-	if err != nil {
-		log.Println("could not delete file", attachment.URL, err)
-	}
-	err = os.Remove(filepath.Dir(attachment.URL))
-	if err != nil {
-		log.Println("could not delete directory", filepath.Dir(attachment.URL), err)
-	}
-}
-
-func repeatedFileCleanup(db *orm.DB) { // Why is it still unused?
-	for {
-		attachments, err := db.GetUnusedAttachments()
-		if err != nil {
-			log.Print(err)
-		} else {
-			for _, attachment := range attachments {
-				deleteAttachment(attachment)
-			}
-		}
-		time.Sleep(time.Second * config.FileCleanupIntervalSec)
-	}
-}
-
 type Messenger = messenger.Messenger
-
-func repeatedProcessUnsentMessages(db *orm.DB, messengers map[string]Messenger) {
-	for {
-		messages, err := db.GetUnsentMessages(config.UnsentRetrieveMaxCnt)
-		if err != nil {
-			log.Print(err)
-		} else {
-			for _, queuedMessage := range messages {
-				destination := &queuedMessage.Destination
-				if err = messengers[destination.Type].SendMessage(&queuedMessage.Message, destination); err != nil {
-					log.Printf("could not send message: %v", err)
-					if err := db.AddUnsentMessage(queuedMessage); err != nil {
-						log.Printf("could not save unsent message %v", err)
-					}
-				}
-			}
-		}
-		time.Sleep(time.Second * config.RetrySendIntervalSec)
-	}
-}
 
 func main() {
 	db := orm.NewDB()
@@ -80,6 +35,7 @@ func main() {
 	log.Printf("created grpc server")
 
 	go repeatedProcessUnsentMessages(db, messengers)
+	go repeatedFileCleanup(db)
 
 	if err := server.Serve(listener); err != nil {
 		log.Fatalf("failed to serve: %s", err)
@@ -100,7 +56,6 @@ func initMessengers() (map[string]Messenger, error) {
 }
 
 func newHTTPListener() net.Listener {
-
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%s", config.ServerPort))
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
@@ -113,4 +68,53 @@ func newGRPCServer(storage messenger.Storage, messengers map[string]Messenger) *
 	controllerServer := messenger.NewControllerServer(storage, messengers)
 	controller.RegisterControllerServer(server, controllerServer)
 	return server
+}
+
+func repeatedFileCleanup(db *orm.DB) {
+	for {
+		attachments, err := db.GetUnusedAttachments()
+		if err != nil {
+			log.Print(err)
+		} else {
+			for _, attachment := range attachments {
+				deleteAttachment(attachment)
+			}
+		}
+		time.Sleep(time.Second * config.FileCleanupIntervalSec)
+	}
+}
+
+func deleteAttachment(attachment *orm.Attachment) {
+	err := os.Remove(attachment.URL)
+	if err != nil {
+		log.Println("could not delete file", attachment.URL, err)
+	}
+	err = os.Remove(filepath.Dir(attachment.URL))
+	if err != nil {
+		log.Println("could not delete directory", filepath.Dir(attachment.URL), err)
+	}
+}
+
+func repeatedProcessUnsentMessages(db *orm.DB, messengers map[string]Messenger) {
+	for {
+		messages, err := db.GetUnsentMessages(config.UnsentRetrieveMaxCnt)
+		if err != nil {
+			log.Print(err)
+		} else {
+			processUnsentMessages(messages, db, messengers)
+		}
+		time.Sleep(time.Second * config.RetrySendIntervalSec)
+	}
+}
+
+func processUnsentMessages(messages []orm.QueuedMessage, db *orm.DB, messengers map[string]Messenger) {
+	for _, queuedMessage := range messages {
+		destination := &queuedMessage.Destination
+		if err := messengers[destination.Type].SendMessage(&queuedMessage.Message, destination); err != nil {
+			log.Printf("could not send message: %v", err)
+			if err := db.AddUnsentMessage(queuedMessage); err != nil {
+				log.Printf("could not save unsent message %v", err)
+			}
+		}
+	}
 }

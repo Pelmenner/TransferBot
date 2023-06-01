@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-var Config = struct { // TODO;
+var Config = struct {
 	TGSleepIntervalSec     int
 	MediaGroupWaitTime     time.Duration
 	TGBotAPITimeoutSec     int

@@ -3,9 +3,11 @@ package messenger
 import (
 	"Pelmenner/TransferBot/orm"
 	"context"
-	"fmt"
 	"github.com/Pelmenner/TransferBot/proto/controller"
 	"github.com/Pelmenner/TransferBot/proto/messenger"
+	"github.com/golang/protobuf/ptypes/empty"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"log"
 	"os"
 	"path/filepath"
@@ -18,7 +20,8 @@ type Storage interface {
 	GetUnsentMessages(maxCnt int) ([]orm.QueuedMessage, error)
 	AddUnsentMessage(message orm.QueuedMessage) error
 	GetChat(chatID int64, chatType string) (*orm.Chat, error)
-	AddChat(chatID int64, chatType string) (*orm.Chat, error)
+	GetChatToken(chatID int64, chatType string) (string, error)
+	CreateChat(chat *orm.Chat) (*orm.Chat, error)
 	FindSubscribedChats(chat orm.Chat) ([]orm.Chat, error)
 }
 
@@ -36,15 +39,15 @@ func NewControllerServer(storage Storage, messengers map[string]Messenger) contr
 	return &ControllerServer{storage: storage, messengers: messengers}
 }
 
-func (c *ControllerServer) HandleNewMessage(ctx context.Context, request *controller.HandleMessageRequest) (
-	*controller.HandleMessageResponse, error) {
+func (c *ControllerServer) HandleNewMessage(_ context.Context, request *controller.HandleMessageRequest) (
+	*empty.Empty, error) {
 	message := messageFromProto(request.Message)
 	chat := chatFromProto(request.Chat)
 
 	subscribed, err := c.storage.FindSubscribedChats(*chat)
 	if err != nil {
-		log.Print(err)
-		return &controller.HandleMessageResponse{}, err
+		log.Printf("could not find subscribed chats: %v", err)
+		return &empty.Empty{}, status.Error(codes.Unknown, "something went wrong")
 	}
 	sentToAllSubscribers := true
 	for _, subscription := range subscribed {
@@ -62,65 +65,46 @@ func (c *ControllerServer) HandleNewMessage(ctx context.Context, request *contro
 			deleteAttachment(attachment)
 		}
 	}
-	return &controller.HandleMessageResponse{}, nil
+	return &empty.Empty{}, nil
 }
 
-func (c *ControllerServer) Subscribe(ctx context.Context, request *controller.SubscribeRequest) (
+func (c *ControllerServer) Subscribe(_ context.Context, request *controller.SubscribeRequest) (
 	*controller.SubscribeResponse, error) {
 	subscriber := chatFromProto(request.Chat)
 	subscriptionToken := request.Token
 	log.Printf("subscribe %+v on chat with token %s", subscriber, subscriptionToken)
-	var statusMessage string
-	if err := c.storage.Subscribe(subscriber, subscriptionToken); err == nil {
-		statusMessage = "successfully subscribed!"
-	} else {
-		log.Print(err)
-		statusMessage = "could not subscribe on chat with given token"
-		return &controller.SubscribeResponse{}, fmt.Errorf("subscription failed")
+	err := c.storage.Subscribe(subscriber, subscriptionToken)
+
+	if err != nil {
+		log.Printf("subscription failed: %v", err)
+		return &controller.SubscribeResponse{}, status.Error(400, "could not subscribe on chat with given token")
 	}
-	err := c.messengers[subscriber.Type].SendMessage(&orm.Message{Text: statusMessage}, subscriber)
-	return &controller.SubscribeResponse{}, err
+	return &controller.SubscribeResponse{}, nil
 }
 
-func (c *ControllerServer) Unsubscribe(ctx context.Context, request *controller.UnsubscribeRequest) (
+func (c *ControllerServer) Unsubscribe(_ context.Context, request *controller.UnsubscribeRequest) (
 	*controller.UnsubscribeResponse, error) {
 	subscriber := chatFromProto(request.Chat)
 	subscriptionToken := request.Token
+
 	log.Printf("unsubscribe chat %+v from chat with token %s", subscriber, subscriptionToken)
-	var statusMessage string
-	if err := c.storage.Unsubscribe(subscriber, subscriptionToken); err == nil {
-		statusMessage = "successfully unsubscribed!"
-	} else {
-		log.Print(err)
-		statusMessage = "could not unsubscribe from chat with given token"
-		return &controller.UnsubscribeResponse{}, fmt.Errorf("unsubscription failed")
+	err := c.storage.Unsubscribe(subscriber, subscriptionToken)
+
+	if err != nil {
+		// TODO: add error differentiation
+		log.Printf("unsubscription failed: %v", err)
+		return &controller.UnsubscribeResponse{}, status.Error(codes.Unknown, "could not unsubscribe from chat with given token")
 	}
-	err := c.messengers[subscriber.Type].SendMessage(&orm.Message{Text: statusMessage}, subscriber) // TODO: move it to messenger service
-	return &controller.UnsubscribeResponse{}, err
+	return &controller.UnsubscribeResponse{}, nil
 }
 
-func (c *ControllerServer) GetChat(ctx context.Context, request *controller.GetChatRequest) (
-	*controller.GetChatResponse, error) {
-	chat, err := c.storage.GetChat(request.ChatID, request.Messenger)
+func (c *ControllerServer) GetChatToken(_ context.Context, request *controller.GetChatTokenRequest) (
+	*controller.GetChatTokenResponse, error) {
+	token, err := c.storage.GetChatToken(request.ChatID, request.Messenger)
 	if err != nil {
-		log.Print(err)
-		return &controller.GetChatResponse{}, err
+		return &controller.GetChatTokenResponse{}, status.Error(codes.NotFound, "could not find the chat")
 	}
-	return &controller.GetChatResponse{
-		Chat: chatToProto(chat),
-	}, nil
-}
-
-func (c *ControllerServer) CreateChat(ctx context.Context, request *controller.CreateChatRequest) (
-	*controller.CreateChatResponse, error) {
-	chat, err := c.storage.AddChat(request.ChatID, request.Messenger)
-	if err != nil {
-		log.Print(err)
-		return &controller.CreateChatResponse{}, err
-	}
-	return &controller.CreateChatResponse{
-		Chat: chatToProto(chat),
-	}, nil
+	return &controller.GetChatTokenResponse{Token: token}, nil
 }
 
 func deleteAttachment(attachment *orm.Attachment) {
@@ -154,11 +138,9 @@ func chatFromProto(chat *messenger.Chat) *orm.Chat {
 		return nil
 	}
 	return &orm.Chat{
-		ID:    chat.Id,
-		RowID: chat.RowID,
-		Type:  chat.Type,
-		Token: chat.Token,
-		//TODO: create a Name field
+		ID:   chat.Id,
+		Type: chat.Type,
+		Name: chat.Name,
 	}
 }
 

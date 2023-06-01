@@ -22,7 +22,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("could not connect to controller on %s", tg.Config.ControllerHost)
 	}
-	tgMessenger := tg.NewTGMessenger(messenger.NewBaseMessenger(connection))
+	tgMessenger := tg.NewMessenger(messenger.NewBaseMessenger(connection))
 	log.Printf("connected to controller on %s", tg.Config.ControllerHost)
 	go tgMessenger.Run(context.Background())
 

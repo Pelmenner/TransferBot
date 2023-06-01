@@ -14,21 +14,21 @@ func DownloadFile(filePath string, url string) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { err = resp.Body.Close() }()
 
 	// Create the file
 	dirName := filepath.Dir(filePath)
-	if _, serr := os.Stat(dirName); serr != nil {
-		merr := os.MkdirAll(dirName, os.ModePerm)
-		if merr != nil {
-			panic(merr)
+	if _, dirErr := os.Stat(dirName); dirErr != nil {
+		dirErr = os.MkdirAll(dirName, os.ModePerm)
+		if dirErr != nil {
+			return dirErr
 		}
 	}
 	out, err := os.Create(filePath)
 	if err != nil {
 		return err
 	}
-	defer out.Close()
+	defer func() { err = out.Close() }()
 
 	// Write the body to file
 	_, err = io.Copy(out, resp.Body)
