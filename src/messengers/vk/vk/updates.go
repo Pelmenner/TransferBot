@@ -87,13 +87,12 @@ func (m *Messenger) getFullMessage(message object.MessagesMessage) object.Messag
 }
 
 func (m *Messenger) getSenderName(message object.MessagesMessage) string {
-	userResponse, err := m.vk.UsersGet(api.Params{"user_ids": message.FromID})
-	if err != nil || len(userResponse) == 0 {
-		log.Print("could not find vk user with id ", message.FromID, err)
+	userName, err := m.getUserNameByID(message.FromID)
+	if err != nil {
+		log.Printf("could not get sender name: %v", err)
 		return ""
 	}
-	// have not found a way to get chat name
-	return userResponse[0].FirstName + " " + userResponse[0].LastName
+	return userName
 }
 
 var errCommandNotFound = fmt.Errorf("command not found")
@@ -176,12 +175,12 @@ func (m *Messenger) processWall(wall object.WallWallpost, chat *msg.Chat) error 
 func (m *Messenger) getWallAuthor(wall *object.WallWallpost) string {
 	name := ""
 	if wall.FromID > 0 { // user
-		userResponse, err := m.vk.UsersGet(api.Params{"user_ids": wall.FromID})
-		if err != nil || len(userResponse) == 0 {
-			log.Print("could not find user with id ", wall.FromID)
+		userName, err := m.getUserNameByID(wall.FromID)
+		if err != nil {
+			log.Printf("could not get wall author: %v", err)
 			return ""
 		}
-		name = userResponse[0].FirstName + " " + userResponse[0].LastName
+		return userName
 	} else { // group
 		groupResponse, err := m.vk.GroupsGetByID(api.Params{"group_ids": -wall.FromID})
 		if err != nil || len(groupResponse) == 0 {
@@ -192,6 +191,17 @@ func (m *Messenger) getWallAuthor(wall *object.WallWallpost) string {
 	}
 
 	return name
+}
+
+func (m *Messenger) getUserNameByID(id int) (string, error) {
+	userResponse, err := m.vk.UsersGet(api.Params{"user_ids": id})
+	if err != nil {
+		return "", fmt.Errorf("could not find user with id %d: %v", id, err)
+	}
+	if len(userResponse) == 0 {
+		return "", fmt.Errorf("no users with id %d", id)
+	}
+	return userResponse[0].FirstName + " " + userResponse[0].LastName, nil
 }
 
 func (m *Messenger) processPhoto(photo object.PhotosPhoto, chatID int64, attachments []*msg.Attachment) []*msg.Attachment {
