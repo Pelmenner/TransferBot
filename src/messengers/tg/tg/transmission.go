@@ -78,15 +78,15 @@ func getPreparedMediaList(message *msg.Message, attachmentFullType, attachmentTy
 		if attachment.Type != attachmentType {
 			continue
 		}
-		curCaption := ""
+		currentCaption := ""
 		if len(media) == 0 {
-			curCaption = caption
+			currentCaption = caption
 		}
 		media = append(media, tgbotapi.InputMediaDocument{
 			BaseInputMedia: tgbotapi.BaseInputMedia{
 				Type:      attachmentFullType,
 				Media:     tgbotapi.FilePath(attachment.Url),
-				Caption:   curCaption,
+				Caption:   currentCaption,
 				ParseMode: "HTML",
 			},
 		})

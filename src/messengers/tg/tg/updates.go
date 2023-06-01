@@ -25,9 +25,9 @@ func (m *Messenger) Run(ctx context.Context) {
 			log.Printf("Request stopped: %v", err)
 			return
 		}
-		u := tgbotapi.NewUpdate(lastUpdateID + 1)
-		u.Timeout = Config.TGBotAPITimeoutSec
-		updates := m.tg.GetUpdatesChan(u)
+		updateConfig := tgbotapi.NewUpdate(lastUpdateID + 1)
+		updateConfig.Timeout = Config.TGBotAPITimeoutSec
+		updates := m.tg.GetUpdatesChan(updateConfig)
 
 		for update := range updates {
 			update := update // hack to allow referencing elements in a loop

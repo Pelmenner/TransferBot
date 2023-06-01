@@ -139,11 +139,11 @@ func (m *Messenger) processGetToken(_ object.MessagesMessage, chat *msg.Chat) er
 	if err != nil {
 		return err
 	}
-	_, errSend := m.SendMessage(context.TODO(), &msg.SendMessageRequest{
+	_, sendErr := m.SendMessage(context.TODO(), &msg.SendMessageRequest{
 		Message: &msg.Message{Text: token},
 		Chat:    chat,
 	})
-	return errSend
+	return sendErr
 }
 
 func (m *Messenger) processSubscribe(message object.MessagesMessage, chat *msg.Chat) error {
