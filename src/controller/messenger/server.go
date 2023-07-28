@@ -20,8 +20,8 @@ type Storage interface {
 	GetUnsentMessages(maxCnt int) ([]orm.QueuedMessage, error)
 	AddUnsentMessage(message orm.QueuedMessage) error
 	GetChat(chatID int64, chatType string) (*orm.Chat, error)
-	GetChatToken(chatID int64, chatType string) (string, error)
-	CreateChat(chat *orm.Chat) (*orm.Chat, error)
+	GetChatToken(chat orm.Chat) (string, error)
+	//CreateChat(chat *orm.Chat) (*orm.Chat, error)
 	FindSubscribedChats(chat orm.Chat) ([]orm.Chat, error)
 }
 
@@ -100,8 +100,9 @@ func (c *ControllerServer) Unsubscribe(_ context.Context, request *controller.Un
 
 func (c *ControllerServer) GetChatToken(_ context.Context, request *controller.GetChatTokenRequest) (
 	*controller.GetChatTokenResponse, error) {
-	token, err := c.storage.GetChatToken(request.ChatID, request.Messenger)
+	token, err := c.storage.GetChatToken(orm.Chat{ID: request.ChatID, Type: request.Messenger})
 	if err != nil {
+		log.Printf("could not get %s chat token: %v", request.Messenger, err)
 		return &controller.GetChatTokenResponse{}, status.Error(codes.NotFound, "could not find the chat")
 	}
 	return &controller.GetChatTokenResponse{Token: token}, nil

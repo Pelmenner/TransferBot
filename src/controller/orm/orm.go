@@ -129,14 +129,15 @@ func (db *DB) getOrCreateChat(id int64, messenger string) (*Chat, error) {
 	if err != nil || chat != nil {
 		return chat, err
 	}
-	return db.CreateChat(chat)
+	return db.CreateChat(Chat{ID: id, Type: messenger})
 }
 
 // CreateChat creates new chat entry with given id in messenger, type and name
-func (db *DB) CreateChat(chat *Chat) (*Chat, error) {
+func (db *DB) CreateChat(chat Chat) (*Chat, error) {
 	token := generateToken(chat.ID, chat.Type)
 
-	res := db.QueryRow("INSERT INTO Chats VALUES ($1, $2, $3, $4) RETURNING internal_id",
+	res := db.QueryRow(`INSERT INTO Chats (chat_id, chat_type, token, name) 
+		VALUES ($1, $2, $3, $4) RETURNING internal_id`,
 		&chat.ID, &chat.Type, &token, &chat.Name)
 
 	var internalID int32
@@ -170,10 +171,13 @@ func (db *DB) GetChat(chatID int64, chatType string) (*Chat, error) {
 	return &res, nil
 }
 
-func (db *DB) GetChatToken(chatID int64, chatType string) (string, error) {
+func (db *DB) GetChatToken(chat Chat) (string, error) {
+	if err := chat.fillOrCreate(db); err != nil {
+		return "", err
+	}
 	var token string
 	row := db.QueryRow(`SELECT token FROM Chats
-	WHERE chat_id = $1 AND chat_type = $2`, &chatID, &chatType)
+	WHERE chat_id = $1 AND chat_type = $2`, &chat.ID, &chat.Type)
 
 	err := row.Scan(&token)
 	if err != nil {
