@@ -14,7 +14,7 @@ ENV DEBUG=$DEBUG
 # Delve (Go debugger) seems to conflict with gRPC server.
 # Current debug configuration breaks connections before the responses are sent.
 # Nevertheless, it allows requests to reach server, so it is not completely useless.
-RUN if ! [ -z $DEBUG ]; then \
+RUN if [ -n "$DEBUG" ]; then \
         go install github.com/go-delve/delve/cmd/dlv@latest; \
     fi
 
@@ -29,7 +29,7 @@ COPY controller/ controller/
 
 WORKDIR controller
 RUN mkdir data
-RUN if ! [ -z $DEBUG ]; then \
+RUN if [ -n "$DEBUG" ]; then \
         go build -gcflags "all=-N -l" -o /transfer_bot; \
     else \
         go build -o /transfer_bot; \
