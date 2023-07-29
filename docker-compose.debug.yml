@@ -9,3 +9,10 @@ services:
       - '40000:40000'
     security_opt:
       - "seccomp:unconfined"
+  vk:
+    build:
+      args:
+        - DEBUG=TRUE
+        - DEBUG_PORT=40000
+    ports:
+      - '40001:40000'
