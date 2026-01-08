@@ -8,12 +8,12 @@ import (
 	"os"
 	"path/filepath"
 
-	shared "github.com/Pelmenner/TransferBot/messenger"
 	"github.com/Pelmenner/TransferBot/proto/controller"
 	"github.com/Pelmenner/TransferBot/proto/messenger"
 	"github.com/golang/protobuf/ptypes/empty"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 )
 
 type Storage interface {
@@ -26,17 +26,17 @@ type Storage interface {
 	FindSubscribedChats(chat orm.Chat) ([]orm.Chat, error)
 }
 
-type Messenger interface {
-	SendMessage(*orm.Message, *orm.Chat) error
+type Queue interface {
+	Publish(topic string, message proto.Message) error
 }
 
 type ControllerServer struct {
 	controller.UnimplementedControllerServer
-	queue   shared.Queue
+	queue   Queue
 	storage Storage
 }
 
-func NewControllerServer(storage Storage, queue shared.Queue) controller.ControllerServer {
+func NewControllerServer(storage Storage, queue Queue) controller.ControllerServer {
 	return &ControllerServer{storage: storage, queue: queue}
 }
 
@@ -52,21 +52,28 @@ func (c *ControllerServer) HandleNewMessage(_ context.Context, request *controll
 	}
 	sentToAllSubscribers := true
 	for _, subscription := range subscribed {
-		queuedMsg := shared.QueuedMessage{
-			Text:              message.Text,
-			SenderName:        message.Sender.Name,
-			SenderChat:        message.Sender.Chat,
-			DestinationChatID: subscription.ID,
+		// Construct SendMessageRequest from Proto types directly
+		// We need to map ORM/Internal types back to Proto or just use the input Proto?
+		// request.Message is already *messenger.Message.
+		// request.Chat is the SOURCE chat.
+		// We need to construct a message for the DESTINATION chat (subscription).
+
+		// The NATS consumer expects `messenger.SendMessageRequest`.
+		// It contains `Message` and `Chat` (Destination).
+
+		destChat := &messenger.Chat{
+			Id:   subscription.ID,
+			Type: subscription.Type,
+			Name: subscription.Name, // This might be empty if ORM doesn't store it same way, but ID/Type is key.
 		}
-		for _, attachment := range message.Attachments {
-			queuedMsg.Attachments = append(queuedMsg.Attachments, shared.Attachment{
-				Type: attachment.Type,
-				URL:  attachment.URL,
-			})
+
+		outMsg := &messenger.SendMessageRequest{
+			Message: request.Message, // Forward the original message structure
+			Chat:    destChat,
 		}
 
 		subject := fmt.Sprintf("messages.send.%s.%d", subscription.Type, subscription.ID)
-		if err = c.queue.Publish(subject, queuedMsg); err != nil {
+		if err = c.queue.Publish(subject, outMsg); err != nil {
 			log.Printf("could not publish message %+v: %v", message, err)
 			sentToAllSubscribers = false
 		}

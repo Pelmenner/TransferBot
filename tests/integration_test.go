@@ -2,7 +2,6 @@ package integration_tests
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"testing"
@@ -57,11 +56,9 @@ func TestFullFlow(t *testing.T) {
 	}
 
 	// C. Subscribe to NATS to verify publication
-	received := make(chan *shared.QueuedMessage, 1)
-	sub, err := q.Subscribe("messages.send.vk.>", "test-verifier", func(sub string, data []byte) {
-		var qm shared.QueuedMessage
-		json.Unmarshal(data, &qm)
-		received <- &qm
+	received := make(chan *messenger.SendMessageRequest, 1)
+	sub, err := q.Subscribe("messages.send.vk.>", "test-verifier", func(sub string, data *messenger.SendMessageRequest) {
+		received <- data
 	})
 	if err != nil {
 		t.Fatalf("NATS subscribe failed: %v", err)
@@ -110,11 +107,11 @@ func TestFullFlow(t *testing.T) {
 
 	select {
 	case msg := <-received:
-		if msg.Text != "Hello Integration" {
-			t.Errorf("Expected text 'Hello Integration', got '%s'", msg.Text)
+		if msg.Message.Text != "Hello Integration" {
+			t.Errorf("Expected text 'Hello Integration', got '%s'", msg.Message.Text)
 		}
-		if msg.DestinationChatID != 100 {
-			t.Errorf("Expected dest ID 100, got %d", msg.DestinationChatID)
+		if msg.Chat.Id != 100 {
+			t.Errorf("Expected dest ID 100, got %d", msg.Chat.Id)
 		}
 	case <-time.After(5 * time.Second):
 		t.Errorf("Timed out waiting for message")

@@ -1,29 +1,17 @@
 package messenger
 
 import (
-	"encoding/json"
 	"fmt"
 	"log"
 
+	"github.com/Pelmenner/TransferBot/proto/messenger"
 	"github.com/nats-io/nats.go"
+	"google.golang.org/protobuf/proto"
 )
 
-type QueuedMessage struct {
-	Text              string       `json:"text"`
-	SenderName        string       `json:"sender_name"`
-	SenderChat        string       `json:"sender_chat"`
-	DestinationChatID int64        `json:"destination_chat_id"`
-	Attachments       []Attachment `json:"attachments"`
-}
-
-type Attachment struct {
-	Type string `json:"type"`
-	URL  string `json:"url"`
-}
-
 type Queue interface {
-	Publish(topic string, message interface{}) error
-	Subscribe(topic string, durableName string, handler func(sub string, data []byte)) (*nats.Subscription, error)
+	Publish(topic string, message proto.Message) error
+	Subscribe(topic string, durableName string, handler func(sub string, data *messenger.SendMessageRequest)) (*nats.Subscription, error)
 	Close()
 }
 
@@ -58,8 +46,8 @@ func ConnectToQueue(url string) (Queue, error) {
 	return &NatsQueue{conn: nc, js: js}, nil
 }
 
-func (q *NatsQueue) Publish(topic string, message interface{}) error {
-	data, err := json.Marshal(message)
+func (q *NatsQueue) Publish(topic string, message proto.Message) error {
+	data, err := proto.Marshal(message)
 	if err != nil {
 		return fmt.Errorf("marshal: %w", err)
 	}
@@ -68,11 +56,17 @@ func (q *NatsQueue) Publish(topic string, message interface{}) error {
 	return err
 }
 
-func (q *NatsQueue) Subscribe(topic string, durableName string, handler func(sub string, data []byte)) (*nats.Subscription, error) {
+func (q *NatsQueue) Subscribe(topic string, durableName string, handler func(sub string, data *messenger.SendMessageRequest)) (*nats.Subscription, error) {
 	// QueueSubscribe acts as a load-balanced consumer group.
 	// Durable ensures the consumer cursor is saved on the server.
 	sub, err := q.js.QueueSubscribe(topic, durableName, func(msg *nats.Msg) {
-		handler(msg.Subject, msg.Data)
+		var payload messenger.SendMessageRequest
+		if err := proto.Unmarshal(msg.Data, &payload); err != nil {
+			log.Printf("unmarshal failed: %v", err)
+			msg.Ack() // Ack bad message to avoid redelivery loop? Or Nak?
+			return
+		}
+		handler(msg.Subject, &payload)
 		msg.Ack()
 	}, nats.Durable(durableName), nats.ManualAck())
 
