@@ -3,17 +3,18 @@ package tg
 import (
 	"context"
 	"fmt"
+	"log"
+	"path/filepath"
+	"sort"
+	"sync"
+	"time"
+
 	"github.com/Pelmenner/TransferBot/messenger"
 	msg "github.com/Pelmenner/TransferBot/proto/messenger"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"golang.org/x/time/rate"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"log"
-	"path/filepath"
-	"sort"
-	"sync"
-	"time"
 )
 
 func (m *Messenger) Run(ctx context.Context) {
@@ -111,6 +112,7 @@ func (m *Messenger) processGetToken(message *tgbotapi.Message, chat *msg.Chat) e
 	if err != nil {
 		return err
 	}
+	log.Printf("token: %s", token)
 	response := tgbotapi.NewMessage(message.Chat.ID, token)
 	_, err = m.tg.Send(response)
 	return err

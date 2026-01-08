@@ -2,30 +2,74 @@ package main
 
 import (
 	"context"
-	"fmt"
+	"encoding/json"
+	"log"
+	"os"
+	"os/signal"
+	"syscall"
+
 	"github.com/Pelmenner/TransferBot/messenger"
 	msg "github.com/Pelmenner/TransferBot/proto/messenger"
 	"github.com/Pelmenner/TransferBot/vk/vk"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-	"log"
-	"net"
 )
 
 func main() {
-	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", vk.Config.Port))
-	if err != nil {
-		log.Fatalf("failed to listen: %v", err)
-	}
 	vkMessenger := createMessenger()
 	go vkMessenger.Run(context.Background())
-	grpcServer := grpc.NewServer()
-	msg.RegisterChatServiceServer(grpcServer, vkMessenger)
 
-	log.Printf("initializing gRPC server on port %d", vk.Config.Port)
-	if err = grpcServer.Serve(lis); err != nil {
-		log.Fatalf("failed to serve: %v", err)
+	natsURL := os.Getenv("NATS_URL")
+	if natsURL == "" {
+		natsURL = "nats://nats:4222"
 	}
+	queue, err := messenger.ConnectToQueue(natsURL)
+	if err != nil {
+		log.Fatalf("could not connect to nats: %v", err)
+	}
+	defer queue.Close()
+
+	log.Println("connected to nats, subscribing to messages.send.vk.>")
+	_, err = queue.Subscribe("messages.send.vk.>", "vk-sender", func(sub string, data []byte) {
+		var qm messenger.QueuedMessage
+		if err := json.Unmarshal(data, &qm); err != nil {
+			log.Printf("failed to unmarshal message: %v", err)
+			return
+		}
+
+		protoMsg := &msg.SendMessageRequest{
+			Message: &msg.Message{
+				Text: qm.Text,
+				Sender: &msg.Sender{
+					Name: qm.SenderName,
+					Chat: &msg.Chat{Name: qm.SenderChat},
+				},
+			},
+			Chat: &msg.Chat{
+				Id:   qm.DestinationChatID,
+				Type: "vk",
+			},
+		}
+		for _, a := range qm.Attachments {
+			protoMsg.Message.Attachments = append(protoMsg.Message.Attachments, &msg.Attachment{
+				Type: a.Type,
+				Url:  a.URL,
+			})
+		}
+
+		if _, err := vkMessenger.SendMessage(context.Background(), protoMsg); err != nil {
+			log.Printf("failed to send message to vk: %v", err)
+		}
+	})
+	if err != nil {
+		log.Fatalf("failed to subscribe: %v", err)
+	}
+
+	// Wait for interrupt signal
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+	<-c
+	log.Println("shutting down...")
 }
 
 func createMessenger() *vk.Messenger {

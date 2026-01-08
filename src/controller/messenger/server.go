@@ -3,24 +3,25 @@ package messenger
 import (
 	"Pelmenner/TransferBot/orm"
 	"context"
+	"fmt"
+	"log"
+	"os"
+	"path/filepath"
+
+	shared "github.com/Pelmenner/TransferBot/messenger"
 	"github.com/Pelmenner/TransferBot/proto/controller"
 	"github.com/Pelmenner/TransferBot/proto/messenger"
 	"github.com/golang/protobuf/ptypes/empty"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"log"
-	"os"
-	"path/filepath"
 )
 
 type Storage interface {
-	GetUnusedAttachments() ([]*orm.Attachment, error)
 	Unsubscribe(subscriber *orm.Chat, subscriptionToken string) error
 	Subscribe(subscriber *orm.Chat, subscriptionToken string) error
-	GetUnsentMessages(maxCnt int) ([]orm.QueuedMessage, error)
-	AddUnsentMessage(message orm.QueuedMessage) error
 	GetChat(chatID int64, chatType string) (*orm.Chat, error)
-	GetChatToken(chatID int64, chatType string) (string, error)
+	GetOrCreateChat(chatID int64, chatType string) (*orm.Chat, error)
+	GetChatToken(chat *orm.Chat) (string, error)
 	CreateChat(chat *orm.Chat) (*orm.Chat, error)
 	FindSubscribedChats(chat orm.Chat) ([]orm.Chat, error)
 }
@@ -31,12 +32,12 @@ type Messenger interface {
 
 type ControllerServer struct {
 	controller.UnimplementedControllerServer
-	messengers map[string]Messenger
-	storage    Storage
+	queue   shared.Queue
+	storage Storage
 }
 
-func NewControllerServer(storage Storage, messengers map[string]Messenger) controller.ControllerServer {
-	return &ControllerServer{storage: storage, messengers: messengers}
+func NewControllerServer(storage Storage, queue shared.Queue) controller.ControllerServer {
+	return &ControllerServer{storage: storage, queue: queue}
 }
 
 func (c *ControllerServer) HandleNewMessage(_ context.Context, request *controller.HandleMessageRequest) (
@@ -51,15 +52,28 @@ func (c *ControllerServer) HandleNewMessage(_ context.Context, request *controll
 	}
 	sentToAllSubscribers := true
 	for _, subscription := range subscribed {
-		if err = c.messengers[subscription.Type].SendMessage(message, &subscription); err != nil {
-			log.Printf("could not send message %+v: %v", message, err)
-			if err = c.storage.AddUnsentMessage(orm.QueuedMessage{
-				Message: *message, Destination: subscription}); err != nil {
-				log.Printf("could not save unsent message: %v", err)
-			}
+		queuedMsg := shared.QueuedMessage{
+			Text:              message.Text,
+			SenderName:        message.Sender.Name,
+			SenderChat:        message.Sender.Chat,
+			DestinationChatID: subscription.ID,
+		}
+		for _, attachment := range message.Attachments {
+			queuedMsg.Attachments = append(queuedMsg.Attachments, shared.Attachment{
+				Type: attachment.Type,
+				URL:  attachment.URL,
+			})
+		}
+
+		subject := fmt.Sprintf("messages.send.%s.%d", subscription.Type, subscription.ID)
+		if err = c.queue.Publish(subject, queuedMsg); err != nil {
+			log.Printf("could not publish message %+v: %v", message, err)
 			sentToAllSubscribers = false
 		}
 	}
+	// We invoke deletion only if all published successfully, or maybe we just rely on NATS.
+	// The original logic deleted attachments if sent to all.
+	// If we published, we assume it's "sent" to the queue.
 	if sentToAllSubscribers {
 		for _, attachment := range message.Attachments {
 			deleteAttachment(attachment)
@@ -100,7 +114,12 @@ func (c *ControllerServer) Unsubscribe(_ context.Context, request *controller.Un
 
 func (c *ControllerServer) GetChatToken(_ context.Context, request *controller.GetChatTokenRequest) (
 	*controller.GetChatTokenResponse, error) {
-	token, err := c.storage.GetChatToken(request.ChatID, request.Messenger)
+	chat, err := c.storage.GetOrCreateChat(request.ChatID, request.Messenger)
+	if err != nil {
+		return &controller.GetChatTokenResponse{}, status.Error(codes.NotFound, "could not find or create the chat")
+	}
+	token, err := c.storage.GetChatToken(chat)
+	log.Printf("get chat token for chat %d, token %s", request.ChatID, token)
 	if err != nil {
 		return &controller.GetChatTokenResponse{}, status.Error(codes.NotFound, "could not find the chat")
 	}

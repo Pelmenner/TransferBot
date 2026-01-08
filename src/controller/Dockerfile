@@ -20,11 +20,13 @@ RUN if ! [ -z $DEBUG ]; then \
 
 COPY proto/go.mod proto/go.sum proto/
 COPY controller/go.mod controller/go.sum controller/
+COPY messengers/messenger/go.mod messengers/messenger/go.sum messengers/messenger/
 WORKDIR controller
 RUN go mod download
 WORKDIR ..
 
 COPY proto/ proto/
+COPY messengers/messenger/ messengers/messenger/
 COPY controller/ controller/
 
 WORKDIR controller

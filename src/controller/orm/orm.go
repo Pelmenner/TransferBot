@@ -43,17 +43,12 @@ func (c *Chat) fillOrCreate(db *DB) error {
 	if c.complete {
 		return nil
 	}
-	chat, err := db.getOrCreateChat(c.ID, c.Type)
+	chat, err := db.GetOrCreateChat(c.ID, c.Type)
 	if err != nil {
 		return err
 	}
 	*c = *chat // does it work?
 	return err
-}
-
-type QueuedMessage struct {
-	Message
-	Destination Chat
 }
 
 type DB struct {
@@ -121,14 +116,15 @@ func generateToken(chatID int64, chatType string) string {
 	return fmt.Sprintf("%x", hash)[:config.TokenLength]
 }
 
-// getOrCreateChat tries to find a chat by id and messenger
+// GetOrCreateChat tries to find a chat by id and messenger
 // If it does not exist, a new instance is created.
 // In both cases either a complete chat object or an error is returned.
-func (db *DB) getOrCreateChat(id int64, messenger string) (*Chat, error) {
+func (db *DB) GetOrCreateChat(id int64, messenger string) (*Chat, error) {
 	chat, err := db.GetChat(id, messenger)
 	if err != nil || chat != nil {
 		return chat, err
 	}
+	chat = &Chat{ID: id, Type: messenger, Name: messenger, complete: true}
 	return db.CreateChat(chat)
 }
 
@@ -136,7 +132,7 @@ func (db *DB) getOrCreateChat(id int64, messenger string) (*Chat, error) {
 func (db *DB) CreateChat(chat *Chat) (*Chat, error) {
 	token := generateToken(chat.ID, chat.Type)
 
-	res := db.QueryRow("INSERT INTO Chats VALUES ($1, $2, $3, $4) RETURNING internal_id",
+	res := db.QueryRow("INSERT INTO Chats (chat_id, chat_type, token, name) VALUES ($1, $2, $3, $4) RETURNING internal_id",
 		&chat.ID, &chat.Type, &token, &chat.Name)
 
 	var internalID int32
@@ -170,12 +166,13 @@ func (db *DB) GetChat(chatID int64, chatType string) (*Chat, error) {
 	return &res, nil
 }
 
-func (db *DB) GetChatToken(chatID int64, chatType string) (string, error) {
+func (db *DB) GetChatToken(chat *Chat) (string, error) {
 	var token string
 	row := db.QueryRow(`SELECT token FROM Chats
-	WHERE chat_id = $1 AND chat_type = $2`, &chatID, &chatType)
+	WHERE chat_id = $1 AND chat_type = $2`, &chat.ID, &chat.Type)
 
 	err := row.Scan(&token)
+	log.Printf("getChatToken(%d, %s) = %s, %v", chat.ID, chat.Type, token, err)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return "", nil
@@ -183,122 +180,6 @@ func (db *DB) GetChatToken(chatID int64, chatType string) (string, error) {
 		return "", err
 	}
 	return token, nil
-}
-
-// AddUnsentMessage adds message to send later
-func (db *DB) AddUnsentMessage(message QueuedMessage) error {
-	if err := message.Destination.fillOrCreate(db); err != nil {
-		return err
-	}
-	err := db.transact(&sql.TxOptions{
-		Isolation: sql.LevelSerializable,
-		ReadOnly:  false,
-	},
-		func(tx *sql.Tx) error {
-			res := tx.QueryRow(`INSERT INTO Messages
-								VALUES ($1, $2, $3, $4)
-								RETURNING internal_id`,
-				&message.Destination.internalID,
-				&message.Sender.Name, &message.Text, &message.Sender.Chat)
-			var messageRowID int32
-			err := res.Scan(&messageRowID)
-			if err != nil {
-				return err
-			}
-
-			// TODO: remove SQL query from loop
-			for _, attachment := range message.Attachments {
-				_, err := tx.Exec(`INSERT INTO Attachments
-								   VALUES ($1, $2, $3)`,
-					&attachment.Type, &attachment.URL, &messageRowID)
-				if err != nil {
-					return err
-				}
-			}
-
-			return nil
-		})
-
-	return err
-}
-
-func getMessageAttachments(tx *sql.Tx, messageRowID int, attachments []*Attachment) error {
-	rows, err := tx.Query(`SELECT data_type, data_url
-						   FROM Attachments
-						   WHERE parent_message = $1`, &messageRowID)
-	if err != nil {
-		return err
-	}
-
-	for rows.Next() {
-		attachment := &Attachment{}
-		err = rows.Scan(&attachment.Type, &attachment.URL)
-		if err != nil {
-			return err
-		}
-		attachments = append(attachments, attachment)
-	}
-
-	return nil
-}
-
-// GetUnsentMessages returns all messages to send and deletes them from db
-func (db *DB) GetUnsentMessages(maxCnt int) ([]QueuedMessage, error) {
-	var res []QueuedMessage
-	err := db.transact(&sql.TxOptions{
-		Isolation: sql.LevelSerializable,
-		ReadOnly:  false,
-	},
-		func(tx *sql.Tx) error {
-			rows, err := tx.Query(`SELECT sender, sender_chat, message_text, Messages.internal_id, chat_id, chat_type, Chats.name, Chats.internal_id
-								   FROM Messages JOIN Chats ON Messages.destination_chat = Chats.internal_id
-								   LIMIT $1`, &maxCnt)
-			if err != nil {
-				return err
-			}
-
-			var messageRowIDs []int
-			// TODO: remove queries from loop
-			for rows.Next() {
-				message := QueuedMessage{}
-				messageRowID := -1
-				err := rows.Scan(&message.Sender.Name, &message.Sender.Chat, &message.Text, &messageRowID,
-					&message.Destination.ID, &message.Destination.Type,
-					&message.Destination.Name, &message.Destination.internalID)
-				if err != nil {
-					return err
-				}
-
-				messageRowIDs = append(messageRowIDs, messageRowID)
-				res = append(res, message)
-			}
-
-			for i, message := range res {
-				if err = getMessageAttachments(tx, messageRowIDs[i], message.Attachments); err != nil {
-					return err
-				}
-			}
-
-			for _, id := range messageRowIDs {
-				_, err := tx.Exec(`UPDATE Attachments SET parent_message = NULL 
-						WHERE parent_message = $1`, &id)
-				if err != nil {
-					return err
-				}
-				_, err = tx.Exec("DELETE FROM Messages WHERE Messages.internal_id = $1", &id)
-				if err != nil {
-					return err
-				}
-			}
-
-			return nil
-		})
-
-	if err != nil {
-		return nil, err
-	}
-
-	return res, nil
 }
 
 func getChatRowIDByToken(tx *sql.Tx, token string) (int, error) {
@@ -367,55 +248,4 @@ func (db *DB) Unsubscribe(subscriber *Chat, subscriptionToken string) error {
 		})
 
 	return err
-}
-
-// GetUnusedAttachments returns all attachments which will never be sent anymore and deletes them
-func (db *DB) GetUnusedAttachments() ([]*Attachment, error) {
-	var res []*Attachment
-	err := db.transact(&sql.TxOptions{
-		Isolation: sql.LevelSerializable,
-		ReadOnly:  false,
-	},
-		func(tx *sql.Tx) error {
-			rows, err := tx.Query(`SELECT data_type, data_url, Attachments.internal_id
-						   		   FROM Attachments LEFT JOIN Messages
-								   ON Attachments.parent_message = Messages.internal_id
-								   WHERE destination_chat IS NULL`)
-			if err != nil {
-				return err
-			}
-
-			var attachmentRowIDs []int
-			for rows.Next() {
-				attachment := Attachment{}
-				rowID := -1
-				err = rows.Scan(&attachment.Type, &attachment.URL, &rowID)
-				if err != nil {
-					return err
-				}
-
-				res = append(res, &attachment)
-				attachmentRowIDs = append(attachmentRowIDs, rowID)
-			}
-
-			stmt, err := tx.Prepare("DELETE FROM Attachments WHERE internal_id = $1")
-			if err != nil {
-				return err
-			}
-
-			for _, rowID := range attachmentRowIDs {
-				_, err = stmt.Exec(&rowID)
-				if err != nil {
-					return err
-				}
-			}
-
-			return nil
-		})
-
-	if err != nil {
-		return nil, err
-	}
-
-	return res, err
 }

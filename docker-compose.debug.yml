@@ -9,3 +9,7 @@ services:
       - '40000:40000'
     security_opt:
       - "seccomp:unconfined"
+
+  nats:
+    ports:
+      - "4222:4222"

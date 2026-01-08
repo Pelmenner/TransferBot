@@ -11,12 +11,14 @@ services:
       - VK_SERVICE_HOST=messenger-vk:$VK_SERVICE_PORT
       - TG_SERVICE_HOST=messenger-tg:$TG_SERVICE_PORT
       - PORT=$CONTROLLER_PORT
+      - NATS_URL=nats://nats:4222
     volumes:
       - bot-data:/transferbot/data
     networks:
       - bot-net
     depends_on:
       - db
+      - nats
     restart: on-failure
 
   messenger-vk:
@@ -28,12 +30,14 @@ services:
       - CONTROLLER_HOST=controller:$CONTROLLER_PORT
       - VK_TOKEN=$VK_TOKEN
       - PORT=$VK_SERVICE_PORT
+      - NATS_URL=nats://nats:4222
     volumes:
       - bot-data:/transferbot/data
     networks:
       - bot-net
     depends_on:
       - controller
+      - nats
 
   messenger-tg:
     container_name: transferbot-messenger-tg
@@ -44,6 +48,7 @@ services:
       - CONTROLLER_HOST=controller:$CONTROLLER_PORT
       - TG_TOKEN=$TG_TOKEN
       - PORT=$TG_SERVICE_PORT
+      - NATS_URL=nats://nats:4222
     volumes:
       - bot-data:/transferbot/data
     networks:
@@ -61,6 +66,13 @@ services:
       - bot-net
     volumes:
       - db-storage:/var/lib/postgresql/data
+
+  nats:
+    image: nats:latest
+    command: "-js"
+    container_name: transferbot-nats
+    networks:
+      - bot-net
 volumes:
   bot-data:
   db-storage:
