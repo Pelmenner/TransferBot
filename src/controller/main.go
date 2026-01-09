@@ -10,12 +10,12 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/nats-io/nats.go"
+
 	shared "github.com/Pelmenner/TransferBot/messenger"
 	"github.com/Pelmenner/TransferBot/proto/controller"
 	"google.golang.org/grpc"
 )
-
-type Messenger = messenger.Messenger
 
 func main() {
 	db := orm.NewDB()
@@ -35,8 +35,24 @@ func main() {
 	}
 	defer queue.Close()
 
+	nc, err := nats.Connect(natsURL)
+	if err != nil {
+		log.Fatalf("nats connect for store: %v", err)
+	}
+	defer nc.Close()
+
+	js, err := nc.JetStream()
+	if err != nil {
+		log.Fatalf("jetstream init for store: %v", err)
+	}
+
+	attachmentStore, err := messenger.NewNatsAttachmentStore(js)
+	if err != nil {
+		log.Fatalf("adapter store init: %v", err)
+	}
+
 	listener := newHTTPListener()
-	server := newGRPCServer(db, queue)
+	server := newGRPCServer(db, queue, attachmentStore)
 	log.Printf("created grpc server")
 
 	if err := server.Serve(listener); err != nil {
@@ -52,9 +68,9 @@ func newHTTPListener() net.Listener {
 	return lis
 }
 
-func newGRPCServer(storage messenger.Storage, queue shared.Queue) *grpc.Server {
+func newGRPCServer(storage messenger.Storage, queue shared.Queue, attachmentStore messenger.AttachmentStore) *grpc.Server {
 	server := grpc.NewServer()
-	controllerServer := messenger.NewControllerServer(storage, queue)
+	controllerServer := messenger.NewControllerServer(storage, queue, attachmentStore)
 	controller.RegisterControllerServer(server, controllerServer)
 	return server
 }

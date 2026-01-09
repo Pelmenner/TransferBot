@@ -33,14 +33,17 @@ func TestFullFlow(t *testing.T) {
 	}
 	defer nc.Close()
 
+	// Mock Storage and AttachmentStore
 	mockStorage := &MockStorage{}
+	mockAttachmentStore := &MockAttachmentStore{}
+
 	q, err := shared.ConnectToQueue(natsURL)
 	if err != nil {
 		t.Fatalf("failed to connect queue: %v", err)
 	}
 	defer q.Close()
 
-	server := controllerPkg.NewControllerServer(mockStorage, q)
+	server := controllerPkg.NewControllerServer(mockStorage, q, mockAttachmentStore)
 
 	ctx := context.Background()
 
@@ -65,28 +68,9 @@ func TestFullFlow(t *testing.T) {
 	}
 	defer sub.Unsubscribe()
 
-	// D. Send Message (HandleNewMessage)
-	// We send FROM a source that is subscribed to TARGET?
-	// Wait, the logic is: FindSubscribedChats(source). Iterate subscribers. Send to subscriber.
-	// The `Subscribe` call above subscribes "Source Chat" (ID 100) on "Target Chat" (identified by token).
-	// Wait, `Subscribe(subscriber, token)`.
-	// Token identifies the DESTINATION chat.
-	// Subscriber is the LISTENER.
-	// Messages sent TO the DESTINATION chat (via HandleNewMessage) should be forwarded TO the Subscriber.
-
-	// So if I handle message for Destination Chat (Token owner), it should go to Subscriber (Source Chat).
-	// MockStorage needs to resolve CheckToken -> Destination Chat.
-	// And FindSubscribedChats(Destination) -> [Subscriber].
-
-	// Let's configure MockStorage:
 	destChatID := int64(999)
 	destChatType := "tg"
 	mockStorage.destChat = &orm.Chat{ID: destChatID, Type: destChatType, Name: "Target"}
-
-	// HandleNewMessage request comes with Message + Chat (where Chat is the destination?)
-	// Request: `HandleMessageRequest { Message: ..., Chat: ... }`
-	// "Chat" in request is the Chat where the message appeared.
-	// If message appeared in Target, it should be forwarded to Subscriber.
 
 	req := &controller.HandleMessageRequest{
 		Message: &messenger.Message{
@@ -100,10 +84,6 @@ func TestFullFlow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("HandleNewMessage failed: %v", err)
 	}
-
-	// E. Verify NATS logic
-	// Expect message published to Subscriber (ID 100, Type vk)
-	// Topic: messages.send.vk.100
 
 	select {
 	case msg := <-received:
@@ -147,3 +127,10 @@ func (m *MockStorage) FindSubscribedChats(chat orm.Chat) ([]orm.Chat, error) {
 	}
 	return nil, nil
 }
+
+// MockAttachmentStore implements messenger.AttachmentStore
+type MockAttachmentStore struct{}
+
+func (m *MockAttachmentStore) InitRef(key string, count int) error          { return nil }
+func (m *MockAttachmentStore) UpdateRef(key string, delta int) (int, error) { return 1, nil }
+func (m *MockAttachmentStore) Delete(key string) error                      { return nil }

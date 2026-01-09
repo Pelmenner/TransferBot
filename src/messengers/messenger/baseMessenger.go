@@ -3,6 +3,7 @@ package messenger
 import (
 	"context"
 	"fmt"
+
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -14,11 +15,12 @@ import (
 type BaseMessenger struct {
 	msg.UnimplementedChatServiceServer
 	controller.ControllerClient
+	AttachmentStore ObjectStore
 }
 
-func NewBaseMessenger(cc grpc.ClientConnInterface) *BaseMessenger {
+func NewBaseMessenger(cc grpc.ClientConnInterface, attachmentStore ObjectStore) *BaseMessenger {
 	client := controller.NewControllerClient(cc)
-	return &BaseMessenger{ControllerClient: client}
+	return &BaseMessenger{ControllerClient: client, AttachmentStore: attachmentStore}
 }
 
 func (bm *BaseMessenger) MessageCallback(message *msg.Message, chat *msg.Chat) error {

@@ -3,13 +3,16 @@ package vk
 import (
 	"context"
 	"fmt"
+	"io"
+	"log"
+	"net/http"
+	"path/filepath"
+	"strings"
+
 	"github.com/Pelmenner/TransferBot/messenger"
 	"golang.org/x/time/rate"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"log"
-	"path/filepath"
-	"strings"
 
 	msg "github.com/Pelmenner/TransferBot/proto/messenger"
 	"github.com/SevereCloud/vksdk/v2/api"
@@ -207,7 +210,7 @@ func (m *Messenger) getUserNameByID(id int) (string, error) {
 func (m *Messenger) processPhoto(photo object.PhotosPhoto, chatID int64, attachments []*msg.Attachment) []*msg.Attachment {
 	url := photo.MaxSize().URL
 	ext := filepath.Ext(url)
-	attachment := downloadVKFile(url, photo.ID, chatID, ext, "photo")
+	attachment := m.downloadVKFile(url, photo.ID, chatID, ext, "photo")
 	if attachment != nil {
 		return append(attachments, attachment)
 	}
@@ -215,22 +218,36 @@ func (m *Messenger) processPhoto(photo object.PhotosPhoto, chatID int64, attachm
 }
 
 func (m *Messenger) processDocument(document object.DocsDoc, chatID int64, attachments []*msg.Attachment) []*msg.Attachment {
-	attachment := downloadVKFile(document.URL, document.ID, chatID, document.Title, "doc")
+	attachment := m.downloadVKFile(document.URL, document.ID, chatID, document.Title, "doc")
 	if attachment != nil {
 		return append(attachments, attachment)
 	}
 	return attachments
 }
 
-func downloadVKFile(url string, fileID int, chatID int64, fileTitle string, attachmentType string) *msg.Attachment {
-	path := fmt.Sprintf("/transferbot/data/downloads/vk/%d/%d/%s", chatID, fileID, fileTitle)
-	err := DownloadFile(path, url)
+func (m *Messenger) downloadVKFile(url string, fileID int, chatID int64, fileTitle string, attachmentType string) *msg.Attachment {
+	// Download to memory
+	resp, err := http.Get(url)
 	if err != nil {
-		log.Print("could not download vk", attachmentType, ": ", err)
+		log.Printf("could not download vk %s: %v", attachmentType, err)
 		return nil
 	}
+	defer resp.Body.Close()
+
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Printf("could not read vk %s body: %v", attachmentType, err)
+		return nil
+	}
+
+	key, err := m.AttachmentStore.Put(data, fileTitle)
+	if err != nil {
+		log.Printf("could not put vk %s to object store: %v", attachmentType, err)
+		return nil
+	}
+
 	return &msg.Attachment{
 		Type: attachmentType,
-		Url:  path,
+		Url:  key,
 	}
 }

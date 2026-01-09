@@ -2,12 +2,13 @@ package tg
 
 import (
 	"context"
+	"log"
+
 	msg "github.com/Pelmenner/TransferBot/proto/messenger"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/golang/protobuf/ptypes/empty"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"log"
 )
 
 type Requirement int
@@ -47,7 +48,7 @@ func (m *Messenger) sendSpecialAttachmentType(message *msg.Message, chat *msg.Ch
 	if sendText != ReqNever {
 		text = m.SenderToString(message.Sender) + "\n" + tgbotapi.EscapeText("HTML", message.Text)
 	}
-	media := getPreparedMediaList(message, attachmentFullType, attachmentType, text)
+	media := m.getPreparedMediaList(message, attachmentFullType, attachmentType, text)
 	if len(media) == 0 && sendText != ReqAlways {
 		return true, false
 	}
@@ -72,24 +73,36 @@ func (m *Messenger) sendSpecialAttachmentType(message *msg.Message, chat *msg.Ch
 }
 
 // getPreparedMediaList creates tg media attachments for all message's attachments of given type
-func getPreparedMediaList(message *msg.Message, attachmentFullType, attachmentType, caption string) []interface{} {
+func (m *Messenger) getPreparedMediaList(message *msg.Message, attachmentFullType, attachmentType, caption string) []interface{} {
 	var media []interface{}
 	for _, attachment := range message.Attachments {
 		if attachment.Type != attachmentType {
 			continue
 		}
+
+		data, filename, err := m.AttachmentStore.Get(attachment.Url)
+		if err != nil {
+			log.Printf("could not get attachment %s: %v", attachment.Url, err)
+			continue
+		}
+
 		currentCaption := ""
 		if len(media) == 0 {
 			currentCaption = caption
 		}
 		media = append(media, tgbotapi.InputMediaDocument{
 			BaseInputMedia: tgbotapi.BaseInputMedia{
-				Type:      attachmentFullType,
-				Media:     tgbotapi.FilePath(attachment.Url),
+				Type: attachmentFullType,
+				Media: tgbotapi.FileBytes{
+					Name:  filename,
+					Bytes: data,
+				},
 				Caption:   currentCaption,
 				ParseMode: "HTML",
 			},
 		})
+
+		// Decrement handled by event subscription in service.go
 	}
 	return media
 }

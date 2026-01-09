@@ -1,11 +1,11 @@
 package vk
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
 	"log"
-	"os"
 	"strings"
 
 	msg "github.com/Pelmenner/TransferBot/proto/messenger"
@@ -42,18 +42,28 @@ func (m *Messenger) SendMessage(_ context.Context, request *msg.SendMessageReque
 }
 
 func (m *Messenger) uploadAttachment(chatID int, attachment *msg.Attachment) (string, error) {
-	file, err := os.Open(attachment.Url)
+	data, filename, err := m.AttachmentStore.Get(attachment.Url)
 	if err != nil {
-		return "", fmt.Errorf("could not open file %s: %v", attachment.Url, err)
+		return "", fmt.Errorf("could not get attachment %s: %v", attachment.Url, err)
 	}
-	defer file.Close()
 
+	file := bytes.NewReader(data)
+
+	var result string
 	if attachment.Type == "photo" {
-		return m.uploadPhoto(chatID, file)
+		result, err = m.uploadPhoto(chatID, file)
 	} else if attachment.Type == "doc" {
-		return m.uploadDocument(chatID, attachment.Url, file)
+		// Used to be file path, now it's a key. content-disposition might matter but for VK upload it takes title.
+		result, err = m.uploadDocument(chatID, filename, file)
+	} else {
+		return "", fmt.Errorf("unknown attachment type: %s", attachment.Type)
 	}
-	return "", fmt.Errorf("unknown attachment type: %s", attachment.Type)
+
+	if err == nil {
+		// Decrement handled by event subscription in service.go
+	}
+
+	return result, err
 }
 
 func (m *Messenger) uploadPhoto(chatID int, file io.Reader) (string, error) {

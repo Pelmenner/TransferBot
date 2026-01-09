@@ -3,8 +3,9 @@ package tg
 import (
 	"context"
 	"fmt"
+	"io"
 	"log"
-	"path/filepath"
+	"net/http"
 	"sort"
 	"sync"
 	"time"
@@ -259,15 +260,24 @@ func (m *Messenger) saveTelegramFile(config tgbotapi.FileConfig, fileName string
 		return "", fmt.Errorf("error loading file: %w", err)
 	}
 
-	if fileName == "" {
-		fileName = filepath.Base(file.FilePath)
-	}
-	filePath := fmt.Sprintf("/transferbot/data/downloads/tg/%s/%s", file.FileID, fileName)
-	err = DownloadFile(filePath, file.Link(m.tg.Token))
+	downloadURL := file.Link(m.tg.Token)
+	resp, err := http.Get(downloadURL)
 	if err != nil {
 		return "", fmt.Errorf("error downloading file: %w", err)
 	}
-	return filePath, nil
+	defer resp.Body.Close()
+
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("error reading file body: %w", err)
+	}
+
+	key, err := m.AttachmentStore.Put(data, fileName)
+	if err != nil {
+		return "", fmt.Errorf("error putting to object store: %w", err)
+	}
+
+	return key, nil
 }
 
 func getTGSender(message *tgbotapi.Message) *msg.Sender {

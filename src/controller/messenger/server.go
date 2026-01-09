@@ -3,14 +3,15 @@ package messenger
 import (
 	"Pelmenner/TransferBot/orm"
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
-	"os"
-	"path/filepath"
 
+	shared "github.com/Pelmenner/TransferBot/messenger"
 	"github.com/Pelmenner/TransferBot/proto/controller"
 	"github.com/Pelmenner/TransferBot/proto/messenger"
 	"github.com/golang/protobuf/ptypes/empty"
+	"github.com/nats-io/nats.go"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
@@ -28,16 +29,52 @@ type Storage interface {
 
 type Queue interface {
 	Publish(topic string, message proto.Message) error
+	PublishEvent(topic string, event interface{}) error
+	SubscribeEvent(topic string, durableName string, handler func(sub string, data []byte)) (*nats.Subscription, error)
 }
 
 type ControllerServer struct {
 	controller.UnimplementedControllerServer
-	queue   Queue
-	storage Storage
+	queue           Queue
+	storage         Storage
+	attachmentStore AttachmentStore
 }
 
-func NewControllerServer(storage Storage, queue Queue) controller.ControllerServer {
-	return &ControllerServer{storage: storage, queue: queue}
+func NewControllerServer(storage Storage, queue Queue, attachmentStore AttachmentStore) controller.ControllerServer {
+	server := &ControllerServer{
+		storage:         storage,
+		queue:           queue,
+		attachmentStore: attachmentStore,
+	}
+	go server.runCleaner()
+	return server
+}
+
+func (c *ControllerServer) runCleaner() {
+	// Cleaner subscribes to ONLY success events (AttachmentProcessed)
+	_, err := c.queue.SubscribeEvent(shared.AttachmentProcessedSubject, "attachment-cleaner", func(sub string, data []byte) {
+		var event shared.AttachmentEvent
+		if err := json.Unmarshal(data, &event); err != nil {
+			log.Printf("cleaner: unmarshal error: %v", err)
+			return
+		}
+
+		newCount, err := c.attachmentStore.UpdateRef(event.BlobID, event.Delta)
+		if err != nil {
+			log.Printf("cleaner: update ref failed: %v", err)
+			return
+		}
+		if newCount <= 0 {
+			if err := c.attachmentStore.Delete(event.BlobID); err != nil {
+				log.Printf("cleaner: delete failed: %v", err)
+			} else {
+				log.Printf("cleaner: deleted attachment %s", event.BlobID)
+			}
+		}
+	})
+	if err != nil {
+		log.Printf("cleaner failed to subscribe: %v", err)
+	}
 }
 
 func (c *ControllerServer) HandleNewMessage(_ context.Context, request *controller.HandleMessageRequest) (
@@ -50,21 +87,26 @@ func (c *ControllerServer) HandleNewMessage(_ context.Context, request *controll
 		log.Printf("could not find subscribed chats: %v", err)
 		return &empty.Empty{}, status.Error(codes.Unknown, "something went wrong")
 	}
-	sentToAllSubscribers := true
+	// Manage RefCounts for attachments
+	numSubscribers := len(subscribed)
+
+	if len(request.Message.Attachments) > 0 {
+		for _, attachment := range request.Message.Attachments {
+			// Initialize Ref Count from 1 (implicit upload) to Target (Subscribers)
+			// We can safely use InitRef(numSubscribers).
+
+			if err := c.attachmentStore.InitRef(attachment.Url, numSubscribers); err != nil {
+				log.Printf("failed to init ref for %s: %v", attachment.Url, err)
+			}
+		}
+	}
+
 	for _, subscription := range subscribed {
 		// Construct SendMessageRequest from Proto types directly
-		// We need to map ORM/Internal types back to Proto or just use the input Proto?
-		// request.Message is already *messenger.Message.
-		// request.Chat is the SOURCE chat.
-		// We need to construct a message for the DESTINATION chat (subscription).
-
-		// The NATS consumer expects `messenger.SendMessageRequest`.
-		// It contains `Message` and `Chat` (Destination).
-
 		destChat := &messenger.Chat{
 			Id:   subscription.ID,
 			Type: subscription.Type,
-			Name: subscription.Name, // This might be empty if ORM doesn't store it same way, but ID/Type is key.
+			Name: subscription.Name,
 		}
 
 		outMsg := &messenger.SendMessageRequest{
@@ -75,17 +117,9 @@ func (c *ControllerServer) HandleNewMessage(_ context.Context, request *controll
 		subject := fmt.Sprintf("messages.send.%s.%d", subscription.Type, subscription.ID)
 		if err = c.queue.Publish(subject, outMsg); err != nil {
 			log.Printf("could not publish message %+v: %v", message, err)
-			sentToAllSubscribers = false
 		}
 	}
-	// We invoke deletion only if all published successfully, or maybe we just rely on NATS.
-	// The original logic deleted attachments if sent to all.
-	// If we published, we assume it's "sent" to the queue.
-	if sentToAllSubscribers {
-		for _, attachment := range message.Attachments {
-			deleteAttachment(attachment)
-		}
-	}
+
 	return &empty.Empty{}, nil
 }
 
@@ -131,17 +165,6 @@ func (c *ControllerServer) GetChatToken(_ context.Context, request *controller.G
 		return &controller.GetChatTokenResponse{}, status.Error(codes.NotFound, "could not find the chat")
 	}
 	return &controller.GetChatTokenResponse{Token: token}, nil
-}
-
-func deleteAttachment(attachment *orm.Attachment) {
-	err := os.Remove(attachment.URL)
-	if err != nil {
-		log.Println("could not delete file", attachment.URL, err)
-	}
-	err = os.Remove(filepath.Dir(attachment.URL))
-	if err != nil {
-		log.Println("could not delete directory", filepath.Dir(attachment.URL), err)
-	}
 }
 
 func messageFromProto(message *messenger.Message) *orm.Message {

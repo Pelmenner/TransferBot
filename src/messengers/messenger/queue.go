@@ -1,6 +1,7 @@
 package messenger
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 
@@ -11,13 +12,33 @@ import (
 
 type Queue interface {
 	Publish(topic string, message proto.Message) error
+	PublishEvent(topic string, event interface{}) error
 	Subscribe(topic string, durableName string, handler func(sub string, data *messenger.SendMessageRequest)) (*nats.Subscription, error)
+	SubscribeEvent(topic string, durableName string, handler func(sub string, data []byte)) (*nats.Subscription, error)
 	Close()
+	GetObjectStore() ObjectStore
+}
+
+func (q *NatsQueue) SubscribeEvent(topic string, durableName string, handler func(sub string, data []byte)) (*nats.Subscription, error) {
+	return q.js.QueueSubscribe(topic, durableName, func(msg *nats.Msg) {
+		handler(msg.Subject, msg.Data)
+		msg.Ack()
+	}, nats.ManualAck())
+}
+
+func (q *NatsQueue) PublishEvent(topic string, event interface{}) error {
+	data, err := json.Marshal(event)
+	if err != nil {
+		return fmt.Errorf("marshal event: %w", err)
+	}
+	_, err = q.js.Publish(topic, data)
+	return err
 }
 
 type NatsQueue struct {
-	conn *nats.Conn
-	js   nats.JetStreamContext
+	conn        *nats.Conn
+	js          nats.JetStreamContext
+	objectStore ObjectStore
 }
 
 func ConnectToQueue(url string) (Queue, error) {
@@ -43,7 +64,21 @@ func ConnectToQueue(url string) (Queue, error) {
 		log.Printf("check stream failed (might exist): %v", err)
 	}
 
-	return &NatsQueue{conn: nc, js: js}, nil
+	_, err = js.AddStream(&nats.StreamConfig{
+		Name:     "EVENTS",
+		Subjects: []string{"events.>"},
+	})
+	if err != nil {
+		log.Printf("check events stream failed (might exist): %v", err)
+	}
+
+	objectStore, err := NewNatsObjectStore(js)
+	if err != nil {
+		nc.Close()
+		return nil, fmt.Errorf("object store init: %w", err)
+	}
+
+	return &NatsQueue{conn: nc, js: js, objectStore: objectStore}, nil
 }
 
 func (q *NatsQueue) Publish(topic string, message proto.Message) error {
@@ -78,4 +113,8 @@ func (q *NatsQueue) Subscribe(topic string, durableName string, handler func(sub
 
 func (q *NatsQueue) Close() {
 	q.conn.Close()
+}
+
+func (q *NatsQueue) GetObjectStore() ObjectStore {
+	return q.objectStore
 }
