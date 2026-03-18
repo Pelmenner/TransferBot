@@ -60,3 +60,47 @@ docker-compose -f docker-compose.yml -f docker-compose.debug.yml -p transferbot-
 ```
 
 Debugger will be available at port 40000 and can be accessed with some interface (e.g. through Goland's remote debugger).
+
+## Architecture
+
+TransferBot is designed as a microservices-oriented distributed system. The architecture ensures separation of concerns by isolating platform-specific logic from the core message routing and subscription management.
+
+The system consists of the following components:
+- **Controller Service**: The central brain of the system. It exposes a gRPC API that messenger services use to report incoming messages. It manages chat subscriptions and routing rules by communicating with the PostgreSQL database. When a message needs to be forwarded, the controller publishes a task to the NATS message broker.
+- **Messenger Services (VK, Telegram)**: Platform-specific services that securely interact with their respective external APIs (VK API, Telegram API). They serve two main roles:
+  1. **Receiving**: They listen for incoming messages from the platforms and forward them to the Controller via gRPC.
+  2. **Sending**: They subscribe to specific NATS subjects (e.g., `messages.send.tg.>`) to receive messages routed to their platform and send them out using the external API.
+- **PostgreSQL Database**: Persistent storage for user data, chat mappings, tokens, and active subscriptions.
+- **NATS (with JetStream)**: Acts as the asynchronous message broker. It handles the queuing of outgoing messages ensuring reliable delivery to the messenger services. Additionally, it provides an Object Store for temporarily holding media attachments while they are being transferred between messengers.
+
+### Architecture Diagram
+
+```mermaid
+graph LR
+    subgraph External Platforms
+        VK[VK API]
+        TG[Telegram API]
+    end
+
+    subgraph TransferBot Deployment
+        subgraph Messenger Services
+            VKService[Messenger-VK]
+            TGService[Messenger-TG]
+        end
+        Controller[Controller]
+        
+        DB[(PostgreSQL)]
+        NATS[(NATS JetStream Queue)]
+    end
+    
+    VK <-->|Webhooks/API| VKService
+    TG <-->|Webhooks/API| TGService
+    
+    VKService & TGService -- "Incoming Messages (gRPC)" --> Controller
+    
+    Controller <-->|Manage Subscriptions| DB
+    
+    Controller -- "Publish routing tasks & Store Attachments" --> NATS
+    
+    NATS -- "Subscribe outgoing & Fetch Attachments" --> VKService & TGService
+```
